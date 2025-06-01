@@ -1,6 +1,3 @@
-
-
-
 #include <stdio.h>
 #include <windows.h>
 #include <conio.h>
@@ -22,7 +19,7 @@ void desenharMapa(char mapa[TAM][TAM], int vidas, int temChave) {
         }
         printf("\n");
     }
-    printf("\nUse W A S D para mover, Q para sair. Pressione 'I' para interagir. Chave: %s | Tentativas restantes: %d\n",
+    printf("\nUse W A S D para mover, Q para sair. Pressione 'I' para interagir. Chave: %s | Vidas: %d\n",
            temChave ? "SIM" : "NAO", vidas);
 }
 
@@ -31,14 +28,14 @@ void inicializarMapa(char mapa[TAM][TAM], int *px, int *py, int *ex, int *ey, in
     *px = 1; *py = 1;
     *ex = TAM - 2; *ey = TAM - 2;
 
-    // Preencher o mapa com chão
+   
     for (int i = 0; i < TAM; i++) {
         for (int j = 0; j < TAM; j++) {
             mapa[i][j] = '.';
         }
     }
 
-    // Criar as paredes externas
+    
     for (int i = 0; i < TAM; i++) {
         mapa[0][i] = '*';
         mapa[TAM-1][i] = '*';
@@ -46,7 +43,7 @@ void inicializarMapa(char mapa[TAM][TAM], int *px, int *py, int *ex, int *ey, in
         mapa[i][TAM-1] = '*';
     }
 
-    // Obstáculos internos
+    // Obstáculos internos (paredes)
     mapa[3][3] = '*'; mapa[3][4] = '*'; mapa[3][5] = '*';
     mapa[4][3] = '*'; mapa[5][3] = '*';
 
@@ -56,7 +53,7 @@ void inicializarMapa(char mapa[TAM][TAM], int *px, int *py, int *ex, int *ey, in
     mapa[4][12] = '*'; mapa[4][13] = '*';
     mapa[8][16] = '*'; mapa[8][17] = '*';
 
-    // NPCs ou decoração (opcional)
+    // NPC ou decoração
     mapa[2][12] = '\\'; mapa[2][13] = '/';
     mapa[3][12] = '|';  mapa[3][13] = '|';
 
@@ -64,12 +61,19 @@ void inicializarMapa(char mapa[TAM][TAM], int *px, int *py, int *ex, int *ey, in
     mapa[7][16] = '|';  mapa[7][17] = '|';
 
     // Porta e chave
-    mapa[10][5] = 'D';
-    mapa[14][18] = '@';
+    mapa[10][5] = 'D';     // Porta
+    mapa[14][18] = '@';    // Chave
 
     // Jogador e inimigo
     mapa[*py][*px] = '&';
     mapa[*ey][*ex] = 'X';
+
+    // ? Adicionando espinhos ('#')
+    mapa[5][5] = '#';
+    mapa[6][5] = '#';
+    mapa[7][5] = '#';
+    mapa[10][14] = '#';
+    mapa[15][10] = '#';
 }
 
 void moverInimigo(char mapa[TAM][TAM], int *ex, int *ey) {
@@ -88,12 +92,30 @@ void moverInimigo(char mapa[TAM][TAM], int *ex, int *ey) {
     }
 }
 
+
+int portaAdjacente(char mapa[TAM][TAM], int px, int py) {
+    int dx[] = {0, 0, -1, 1};
+    int dy[] = {-1, 1, 0, 0};
+
+    for (int i = 0; i < 4; i++) {
+        int nx = px + dx[i];
+        int ny = py + dy[i];
+        if (nx >= 0 && nx < TAM && ny >= 0 && ny < TAM) {
+            if (mapa[ny][nx] == 'D') {
+                mapa[ny][nx] = '.';  // Abrir porta
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 int main() {
     char mapa[TAM][TAM];
     int px, py;
     int ex, ey;
     int temChave = 0;
-    int vidas = 2;
+    int vidas = 3;
     char tecla;
 
     srand(time(NULL));
@@ -109,7 +131,7 @@ int main() {
                 printf("\nGame Over!\n");
                 break;
             } else {
-                printf("\nVocê foi pego! Reiniciando...\n");
+                printf("\nVocê foi pego pelo inimigo! Reiniciando...\n");
                 Sleep(2000);
                 inicializarMapa(mapa, &px, &py, &ex, &ey, &temChave);
                 continue;
@@ -130,23 +152,42 @@ int main() {
         if (tecla == 'a' || tecla == 'A') nx--;
         if (tecla == 'd' || tecla == 'D') nx++;
 
-        // Checar colisão com parede
+      
         if (mapa[ny][nx] != '*' && mapa[ny][nx] != 'X') {
             px = nx;
             py = ny;
         }
 
-        // Interações
-        if (tecla == 'i' || tecla == 'I') {
-            if (mapa[py][px] == 'D' && temChave) {
-                printf("Você abriu a porta!\n");
+       
+        if (mapa[py][px] == '#') {
+            vidas--;
+            if (vidas < 0) {
+                desenharMapa(mapa, 0, temChave);
+                printf("\nVocê morreu nos espinhos. Game Over!\n");
+                break;
+            } else {
+                printf("\nVocê pisou nos espinhos e perdeu uma vida!\n");
                 Sleep(1000);
                 mapa[py][px] = '.';
-            } else if (mapa[py][px] == '@') {
+                px = 1;
+                py = 1;
+            }
+        }
+
+       
+        if (tecla == 'i' || tecla == 'I') {
+            if (mapa[py][px] == '@') {
                 printf("Você pegou a chave!\n");
                 Sleep(1000);
                 temChave = 1;
                 mapa[py][px] = '.';
+            } else if (mapa[py][px] == 'D' && temChave) {
+                printf("Você abriu a porta!\n");
+                Sleep(1000);
+                mapa[py][px] = '.';
+            } else if (temChave && portaAdjacente(mapa, px, py)) {
+                printf("Você abriu a porta próxima!\n");
+                Sleep(1000);
             } else {
                 printf("Nada para interagir aqui.\n");
                 Sleep(1000);
