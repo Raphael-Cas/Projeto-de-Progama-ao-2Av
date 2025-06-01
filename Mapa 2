@@ -1,3 +1,6 @@
+
+
+
 #include <stdio.h>
 #include <windows.h>
 #include <conio.h>
@@ -11,7 +14,7 @@ void moverCursor(int x, int y) {
     SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), pos);
 }
 
-void desenharMapa(char mapa[TAM][TAM], int vidas) {
+void desenharMapa(char mapa[TAM][TAM], int vidas, int temChave) {
     system("cls");
     for (int i = 0; i < TAM; i++) {
         for (int j = 0; j < TAM; j++) {
@@ -20,7 +23,7 @@ void desenharMapa(char mapa[TAM][TAM], int vidas) {
         printf("\n");
     }
     printf("\nUse W A S D para mover, Q para sair. Pressione 'I' para interagir. Chave: %s | Tentativas restantes: %d\n",
-           vidas < 3 ? "SIM" : "NAO", vidas);
+           temChave ? "SIM" : "NAO", vidas);
 }
 
 void inicializarMapa(char mapa[TAM][TAM], int *px, int *py, int *ex, int *ey, int *temChave) {
@@ -28,35 +31,43 @@ void inicializarMapa(char mapa[TAM][TAM], int *px, int *py, int *ex, int *ey, in
     *px = 1; *py = 1;
     *ex = TAM - 2; *ey = TAM - 2;
 
+    // Preencher o mapa com chão
     for (int i = 0; i < TAM; i++) {
         for (int j = 0; j < TAM; j++) {
             mapa[i][j] = '.';
         }
     }
 
+    // Criar as paredes externas
     for (int i = 0; i < TAM; i++) {
-        mapa[0][i] = '#';
-        mapa[TAM-1][i] = '#';
-        mapa[i][0] = '#';
-        mapa[i][TAM-1] = '#';
+        mapa[0][i] = '*';
+        mapa[TAM-1][i] = '*';
+        mapa[i][0] = '*';
+        mapa[i][TAM-1] = '*';
     }
 
-    mapa[3][3] = '#'; mapa[3][4] = '#'; mapa[3][5] = '#';
-    mapa[4][3] = '#'; mapa[5][3] = '#';
-    mapa[8][8] = '#'; mapa[8][9] = '#'; mapa[8][10] = '#';
-    mapa[9][10] = '#'; mapa[10][10] = '#';
+    // Obstáculos internos
+    mapa[3][3] = '*'; mapa[3][4] = '*'; mapa[3][5] = '*';
+    mapa[4][3] = '*'; mapa[5][3] = '*';
 
+    mapa[8][8] = '*'; mapa[8][9] = '*'; mapa[8][10] = '*';
+    mapa[9][10] = '*'; mapa[10][10] = '*';
+
+    mapa[4][12] = '*'; mapa[4][13] = '*';
+    mapa[8][16] = '*'; mapa[8][17] = '*';
+
+    // NPCs ou decoração (opcional)
     mapa[2][12] = '\\'; mapa[2][13] = '/';
     mapa[3][12] = '|';  mapa[3][13] = '|';
-    mapa[4][12] = '#';  mapa[4][13] = '#';
 
     mapa[6][16] = '\\'; mapa[6][17] = '/';
     mapa[7][16] = '|';  mapa[7][17] = '|';
-    mapa[8][16] = '#';  mapa[8][17] = '#';
 
+    // Porta e chave
     mapa[10][5] = 'D';
     mapa[14][18] = '@';
 
+    // Jogador e inimigo
     mapa[*py][*px] = '&';
     mapa[*ey][*ex] = 'X';
 }
@@ -90,7 +101,7 @@ int main() {
     inicializarMapa(mapa, &px, &py, &ex, &ey, &temChave);
 
     while (1) {
-        desenharMapa(mapa, vidas);
+        desenharMapa(mapa, vidas, temChave);
 
         if (px == ex && py == ey) {
             vidas--;
@@ -119,11 +130,13 @@ int main() {
         if (tecla == 'a' || tecla == 'A') nx--;
         if (tecla == 'd' || tecla == 'D') nx++;
 
-        if (mapa[ny][nx] != '#' && mapa[ny][nx] != 'X') {
+        // Checar colisão com parede
+        if (mapa[ny][nx] != '*' && mapa[ny][nx] != 'X') {
             px = nx;
             py = ny;
         }
 
+        // Interações
         if (tecla == 'i' || tecla == 'I') {
             if (mapa[py][px] == 'D' && temChave) {
                 printf("Você abriu a porta!\n");
