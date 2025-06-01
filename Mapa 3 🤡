@@ -5,6 +5,7 @@
 #include <time.h>
 
 #define TAM 40
+#define NUM_PAREDES 100 // Número de paredes a serem distribuídas
 
 void desenharMapa(char mapa[TAM][TAM]) {
     system("cls");
@@ -30,6 +31,21 @@ void inicializarMapa(char mapa[TAM][TAM], int *px, int *py, int *vx, int *vy, in
         mapa[TAM - 1][i] = '*';
         mapa[i][0] = '*';
         mapa[i][TAM - 1] = '*';
+    }
+
+    // Adiciona paredes distribuídas uniformemente
+    srand(time(NULL));
+    int paredesDistribuidas = 0;
+    while (paredesDistribuidas < NUM_PAREDES) {
+        int x = rand() % (TAM - 2) + 1; // Garante que a parede não fique nas bordas
+        int y = rand() % (TAM - 2) + 1;
+
+        // Garante que não sobrescreva outros elementos e que haja espaço ao redor
+        if (mapa[y][x] == '.' && mapa[y - 1][x] != '#' && mapa[y + 1][x] != '#' &&
+            mapa[y][x - 1] != '#' && mapa[y][x + 1] != '#') {
+            mapa[y][x] = '#';
+            paredesDistribuidas++;
+        }
     }
 
     // Posiciona o jogador
@@ -79,7 +95,7 @@ void moverInimigo(char mapa[TAM][TAM], int *vx, int *vy, int px, int py) {
     }
 }
 
-void play() {
+void jogar() {
     char mapa[TAM][TAM];
     int px, py; // Posição do jogador
     int vx, vy; // Posição do inimigo
@@ -161,7 +177,32 @@ void play() {
     }
 }
 
+void creditos() {
+    system("cls");
+    printf("=== Créditos ===\n");
+    printf("Desenvolvedor: Seu Nome\n");
+    printf("Agradecimentos: Comunidade C\n");
+    printf("\nPressione qualquer tecla para voltar ao menu...\n");
+    _getch();
+}
+
 int main() {
-    play();
-    return 0;
+    int opcao;
+
+    while (1) {
+        system("cls");
+        printf("=== Dungeon Crawler ===\n");
+        printf("1. Jogar\n");
+        printf("2. Créditos\n");
+        printf("3. Sair\n");
+        printf("Escolha uma opção: ");
+        scanf("%d", &opcao);
+
+        switch (opcao) {
+            case 1: jogar(); break;
+            case 2: creditos(); break;
+            case 3: printf("Saindo do jogo...\n"); return 0;
+            default: printf("Opção inválida!\n"); Sleep(1000);
+        }
+    }
 }
