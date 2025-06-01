@@ -1,0 +1,106 @@
+#include <stdio.h>
+#include <windows.h>
+#include <conio.h>
+
+#define TAM 20
+
+void moverCursor(int x, int y) {
+    COORD pos = { x * 2, y };
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), pos);
+}
+
+void desenharMapa(char mapa[TAM][TAM]) {
+    system("cls");
+    for (int i = 0; i < TAM; i++) {
+        for (int j = 0; j < TAM; j++) {
+            printf("%c ", mapa[i][j]);
+        }
+        printf("\n");
+    }
+}
+
+void inicializarMapa(char mapa[TAM][TAM]) {
+    for (int i = 0; i < TAM; i++) {
+        for (int j = 0; j < TAM; j++) {
+            mapa[i][j] = '.';
+        }
+    }
+
+    for (int i = 0; i < TAM; i++) {
+        mapa[0][i] = '#';
+        mapa[TAM-1][i] = '#';
+        mapa[i][0] = '#';
+        mapa[i][TAM-1] = '#';
+    }
+
+    mapa[3][3] = '#'; mapa[3][4] = '#'; mapa[3][5] = '#';
+    mapa[4][3] = '#'; mapa[5][3] = '#';
+    mapa[8][8] = '#'; mapa[8][9] = '#'; mapa[8][10] = '#';
+    mapa[9][10] = '#'; mapa[10][10] = '#';
+
+    mapa[2][12] = '\\'; mapa[2][13] = '/';
+    mapa[3][12] = '|';  mapa[3][13] = '|';
+    mapa[4][12] = '#';  mapa[4][13] = '#';
+
+    mapa[6][16] = '\\'; mapa[6][17] = '/';
+    mapa[7][16] = '|';  mapa[7][17] = '|';
+    mapa[8][16] = '#';  mapa[8][17] = '#';
+
+    mapa[10][5] = 'D';
+    mapa[14][18] = '@';
+}
+
+int main() {
+    char mapa[TAM][TAM];
+    int px = 1, py = 1; // posição inicial do jogador
+    char tecla;
+    int temChave = 0;
+
+    inicializarMapa(mapa);
+    mapa[py][px] = '&';
+
+    while (1) {
+        desenharMapa(mapa);
+        printf("\nUse W A S D para mover, Q para sair. Pressione 'I' para interagir. Chave: %s\n", temChave ? "SIM" : "NAO");
+
+        tecla = _getch();
+
+        mapa[py][px] = '.';
+
+        if (tecla == 'q' || tecla == 'Q')
+            break;
+
+        int nx = px, ny = py;
+
+        if (tecla == 'w' || tecla == 'W') ny--;
+        if (tecla == 's' || tecla == 'S') ny++;
+        if (tecla == 'a' || tecla == 'A') nx--;
+        if (tecla == 'd' || tecla == 'D') nx++;
+
+        if (mapa[ny][nx] != '#') {
+            px = nx;
+            py = ny;
+        }
+
+        if (tecla == 'i' || tecla == 'I') {
+            if (mapa[py][px] == 'D' && temChave) {
+                printf("Você abriu a porta!\n");
+                Sleep(1000);
+                mapa[py][px] = '.';
+            } else if (mapa[py][px] == '@') {
+                printf("Você pegou a chave!\n");
+                Sleep(1000);
+                temChave = 1;
+                mapa[py][px] = '.';
+            } else {
+                printf("Nada para interagir aqui.\n");
+                Sleep(1000);
+            }
+        }
+
+        mapa[py][px] = '&'; // atualiza jogador
+    }
+
+    printf("\nJogo encerrado!\n");
+    return 0;
+}
