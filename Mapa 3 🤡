@@ -1,0 +1,167 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <conio.h>
+#include <windows.h>
+#include <time.h>
+
+#define TAM 40
+
+void desenharMapa(char mapa[TAM][TAM]) {
+    system("cls");
+    for (int i = 0; i < TAM; i++) {
+        for (int j = 0; j < TAM; j++) {
+            printf("%c ", mapa[i][j]);
+        }
+        printf("\n");
+    }
+}
+
+void inicializarMapa(char mapa[TAM][TAM], int *px, int *py, int *vx, int *vy, int *tx, int *ty) {
+    // Inicializa o mapa vazio
+    for (int i = 0; i < TAM; i++) {
+        for (int j = 0; j < TAM; j++) {
+            mapa[i][j] = '.';
+        }
+    }
+
+    // Bordas do mapa
+    for (int i = 0; i < TAM; i++) {
+        mapa[0][i] = '*';
+        mapa[TAM - 1][i] = '*';
+        mapa[i][0] = '*';
+        mapa[i][TAM - 1] = '*';
+    }
+
+    // Posiciona o jogador
+    *px = 1;
+    *py = 1;
+    mapa[*py][*px] = '&';
+
+    // Posiciona o inimigo
+    *vx = TAM - 2;
+    *vy = TAM - 2;
+    mapa[*vy][*vx] = 'V';
+
+    // Posiciona a chave
+    mapa[10][10] = '@';
+
+    // Posiciona a porta
+    mapa[20][20] = 'D';
+
+    // Posiciona os teleportes
+    mapa[5][5] = '>';
+    mapa[10][9] = '<';
+
+    // Teleporte inicial
+    *tx = 5;
+    *ty = 5;
+}
+
+void moverInimigo(char mapa[TAM][TAM], int *vx, int *vy, int px, int py) {
+    int dx = 0, dy = 0;
+
+    // Calcula a direção do movimento
+    if (*vx < px) dx = 1;
+    else if (*vx > px) dx = -1;
+
+    if (*vy < py) dy = 1;
+    else if (*vy > py) dy = -1;
+
+    // Move o inimigo
+    int nx = *vx + dx;
+    int ny = *vy + dy;
+
+    if (mapa[ny][nx] == '.' || mapa[ny][nx] == '&') {
+        mapa[*vy][*vx] = '.';
+        *vx = nx;
+        *vy = ny;
+        mapa[*vy][*vx] = 'V';
+    }
+}
+
+void play() {
+    char mapa[TAM][TAM];
+    int px, py; // Posição do jogador
+    int vx, vy; // Posição do inimigo
+    int tx, ty; // Posição do teleporte inicial
+    int temChave = 0;
+    char tecla;
+
+    inicializarMapa(mapa, &px, &py, &vx, &vy, &tx, &ty);
+
+    while (1) {
+        desenharMapa(mapa);
+
+        // Exibe informações
+        printf("Use W A S D para mover, Q para sair. Pressione 'I' para interagir.\n");
+        printf("Chave: %s\n", temChave ? "SIM" : "NAO");
+
+        // Verifica se o jogador foi pego pelo inimigo
+        if (px == vx && py == vy) {
+            printf("Você foi pego pelo inimigo! Fim de jogo.\n");
+            break;
+        }
+
+        tecla = _getch();
+        if (tecla == 'q' || tecla == 'Q') break;
+
+        int nx = px, ny = py;
+
+        if (tecla == 'w' || tecla == 'W') ny--;
+        if (tecla == 's' || tecla == 'S') ny++;
+        if (tecla == 'a' || tecla == 'A') nx--;
+        if (tecla == 'd' || tecla == 'D') nx++;
+
+        // Verifica se o jogador pode se mover
+        if (mapa[ny][nx] == '.' || mapa[ny][nx] == '@' || mapa[ny][nx] == 'D' || mapa[ny][nx] == '>' || mapa[ny][nx] == '<') {
+            mapa[py][px] = '.';
+            px = nx;
+            py = ny;
+        }
+
+        // Interações
+        if (tecla == 'i' || tecla == 'I') {
+            if (mapa[py][px] == '@') {
+                temChave = 1;
+                mapa[py][px] = '.';
+                printf("Você pegou a chave!\n");
+                Sleep(1000);
+            } else if (mapa[py][px] == 'D') {
+                if (temChave) {
+                    printf("Você abriu a porta e venceu o jogo!\n");
+                    break;
+                } else {
+                    printf("Você precisa da chave para abrir a porta.\n");
+                    Sleep(1000);
+                }
+            } else if (mapa[py][px] == '>') {
+                // Teleporta para a chave
+                mapa[py][px] = '.';
+                px = 10;
+                py = 9;
+                printf("Você foi teleportado!\n");
+                Sleep(1000);
+            } else if (mapa[py][px] == '<') {
+                // Teleporta de volta ao ponto inicial
+                mapa[py][px] = '.';
+                px = tx;
+                py = ty;
+                printf("Você voltou pelo teleporte!\n");
+                Sleep(1000);
+            }
+        }
+
+        // Atualiza a posição do jogador no mapa
+        mapa[py][px] = '&';
+
+        // Move o inimigo
+        moverInimigo(mapa, &vx, &vy, px, py);
+
+        Sleep(100);
+    }
+}
+
+int main() {
+    play();
+    return 0;
+}
