@@ -1,5 +1,7 @@
 # Projeto-de-Progama-ao-2Av
 
+# Integrantes: Andre Bispo e Raphael Castro
+
 # Jogo de Aventura em C
 
 ## 🎮 Sobre o jogo
