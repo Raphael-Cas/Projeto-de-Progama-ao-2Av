@@ -1,44 +1,55 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <conio.h>
-#include <windows.h>
-#include <string.h>
-#include <locale.h>
-#include <time.h>
+#include <stdlib.h>   // Para usar rand() e srand()
+#include <conio.h>    // Para _getch()
+#include <windows.h>  // Para COORD, SetConsoleCursorPosition, Sleep, system("cls")
+#include <string.h>   // Para usar strcpy e memset
+#include <locale.h>   // Para textos com caracteres especiais
+#include <time.h>     // Para usar time() na seed do rand()
 
 #define TAM 20
 #define MAX_FALAS 7
 #define TAM_FALA 200
 
-int temChave = 0;
-int npcX = 0, npcY = 0;
-int dialogoAtivo = 0;
-int indiceFalaAtual = 0;
-char falasNPC[MAX_FALAS][TAM_FALA];
-int mapaAtualTipo = 0;
+// --- Estrutura do Estado do Jogo ---
+typedef struct {
+    char mapa[TAM][TAM];
+    int playerX, playerY;
+    int enemyX, enemyY;
+    char enemyOccupiedTile;
+    int hasKey;
+    int lives;
+    int currentMapType;
+    int dialogActive;
+    int currentDialogueIndex;
+    char npcDialogues[MAX_FALAS][TAM_FALA];
+} GameState;
 
-unsigned int currentSeed = 0;
-
+// --- Funções de Utilitário ---
 void moverCursor(int x, int y) {
     COORD pos = { x * 2, y };
     SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), pos);
 }
 
-void desenharMapa(char mapa[TAM][TAM]) {
+void desenharMapa(const GameState* state) {
+    system("cls");
     for (int i = 0; i < TAM; i++) {
         for (int j = 0; j < TAM; j++) {
-            printf("%c ", mapa[i][j]);
+            printf("%c ", state->mapa[i][j]);
         }
         printf("\n");
     }
+    printf("\nUse W A S D para mover, Q para sair. Pressione 'I' para interagir. Chave: %s | Vidas: %d\n",
+           state->hasKey ? "SIM" : "NAO", state->lives);
 }
 
-int podeMover(char mapa[TAM][TAM], int x, int y) {
-    if (mapa[y][x] == '*' || mapa[y][x] == '#') return 0;
-    if (mapa[y][x] == 'D') return 0;
+// Verifica se o jogador pode mover para uma coordenada específica
+int podeMover(const GameState* state, int x, int y) {
+    if (state->mapa[y][x] == '*' || state->mapa[y][x] == 'D') return 0;
+    if (state->mapa[y][x] == '#') return 1;
     return 1;
 }
 
+// Desenha uma casa 2x3
 void desenharCasa2x3(char mapa[TAM][TAM], int startX, int startY) {
     if (startX + 1 >= TAM || startY + 2 >= TAM) return;
     mapa[startY][startX] = '/';
@@ -49,7 +60,8 @@ void desenharCasa2x3(char mapa[TAM][TAM], int startX, int startY) {
     mapa[startY + 2][startX + 1] = '*';
 }
 
-void desenharCasaMaior(char mapa[TAM][TAM], int startX, int startY, int* portaX, int* portaY) {
+// Desenha uma casa maior (da Vila)
+void desenharCasaMaior(char mapa[TAM][TAM], int startX, int startY, int* doorX, int* doorY, int* npcX, int* npcY) {
     if (startX + 2 >= TAM || startY + 3 >= TAM) return;
     mapa[startY][startX + 1] = '*';
     mapa[startY + 1][startX] = '/';
@@ -59,26 +71,27 @@ void desenharCasaMaior(char mapa[TAM][TAM], int startX, int startY, int* portaX,
     mapa[startY + 2][startX + 1] = '*';
     mapa[startY + 2][startX + 2] = '*';
     mapa[startY + 3][startX] = '*';
-    mapa[startY + 3][startX + 1] = 'D';
+    mapa[startY + 3][startX + 1] = 'D'; // Porta
     mapa[startY + 3][startX + 2] = '*';
 
-    if (portaX != NULL) *portaX = startX + 1;
-    if (portaY != NULL) *portaY = startY + 3;
+    if (doorX != NULL) *doorX = startX + 1;
+    if (doorY != NULL) *doorY = startY + 3;
     
-    if (mapaAtualTipo == 0) {
-        npcX = startX - 2;
-        npcY = startY + 3;
-        if (npcX >= 0 && npcY >= 0 && npcX < TAM && npcY < TAM) {
-            mapa[npcY][npcX] = 'P';
+    if (npcX != NULL && npcY != NULL) {
+        *npcX = startX - 2;
+        *npcY = startY + 3;
+        if (*npcX >= 0 && *npcY >= 0 && *npcX < TAM && *npcY < TAM) {
+            mapa[*npcY][*npcX] = 'P'; // 'P' para NPC
         }
     }
 }
 
-void desenharCasaInvertida(char mapa[TAM][TAM], int startX, int startY, int* portaX, int* portaY) {
+// Desenha uma casa invertida (da Fase 1)
+void desenharCasaInvertida(char mapa[TAM][TAM], int startX, int startY, int* doorX, int* doorY) {
     if (startX + 2 >= TAM || startY + 3 >= TAM) return;
     
     mapa[startY][startX] = '#';
-    mapa[startY][startX + 1] = 'D';
+    mapa[startY][startX + 1] = 'D'; // Porta (na Fase 1)
     mapa[startY][startX + 2] = '#';
 
     mapa[startY + 1][startX] = '#';
@@ -90,201 +103,290 @@ void desenharCasaInvertida(char mapa[TAM][TAM], int startX, int startY, int* por
     mapa[startY + 2][startX + 2] = '/';
     mapa[startY + 3][startX + 1] = '#';
 
-    if (portaX != NULL) *portaX = startX + 1;
-    if (portaY != NULL) *portaY = startY;
+    if (doorX != NULL) *doorX = startX + 1;
+    if (doorY != NULL) *doorY = startY;
 }
 
-void carregarMapa(char mapa[TAM][TAM], int* playerX, int* playerY, int map_type) {
-    temChave = 0;
-    dialogoAtivo = 0;
-    indiceFalaAtual = 0;
-    mapaAtualTipo = map_type;
+// Carrega um novo mapa baseado no tipo (Vila, Fase 1 ou Fase 2)
+void loadMap(GameState* state, int map_type) {
+    state->hasKey = 0;
+    state->dialogActive = 0;
+    state->currentDialogueIndex = 0;
+    state->currentMapType = map_type;
+    state->enemyOccupiedTile = '.';
 
-    for (int i = 0; i < TAM; i++)
-        for (int j = 0; j < TAM; j++)
-            mapa[i][j] = '.';
-
-    char borderChar = (mapaAtualTipo == 1) ? '#' : '*';
     for (int i = 0; i < TAM; i++) {
-        mapa[0][i] = borderChar;
-        mapa[TAM - 1][i] = borderChar;
-        mapa[i][0] = borderChar;
-        mapa[i][TAM - 1] = borderChar;
+        for (int j = 0; j < TAM; j++) {
+            state->mapa[i][j] = '.';
+        }
     }
 
-    int portaCasaGrandeX, portaCasaGrandeY;
+    char borderChar = (state->currentMapType == 1 || state->currentMapType == 2) ? '#' : '*';
+    for (int i = 0; i < TAM; i++) {
+        state->mapa[0][i] = borderChar;
+        state->mapa[TAM - 1][i] = borderChar;
+        state->mapa[i][0] = borderChar;
+        state->mapa[i][TAM - 1] = borderChar;
+    }
 
-    if (mapaAtualTipo == 1) {
+    int doorHouseX, doorHouseY;
+
+    if (state->currentMapType == 1) { // Fase 1
         for (int i = 2; i < TAM - 2; i++) {
-            mapa[i][5] = '#';
-            mapa[i][10] = '#';
-            mapa[i][15] = '#';
+            state->mapa[i][5] = '#';
+            state->mapa[i][10] = '#';
+            state->mapa[i][15] = '#';
         }
         for (int j = 2; j < TAM - 2; j++) {
-            mapa[5][j] = '#';
-            mapa[10][j] = '#';
-            mapa[15][j] = '#';
+            state->mapa[5][j] = '#';
+            state->mapa[10][j] = '#';
+            state->mapa[15][j] = '#';
         }
-        mapa[5][6] = '.'; mapa[5][7] = '.';
-        mapa[10][11] = '.'; mapa[10][12] = '.';
-        mapa[15][4] = '.'; mapa[15][3] = '.';
+        state->mapa[5][6] = '.'; state->mapa[5][7] = '.';
+        state->mapa[10][11] = '.'; state->mapa[10][12] = '.';
+        state->mapa[15][4] = '.'; state->mapa[15][3] = '.';
 
-        mapa[12][15] = '.';
-        mapa[8][15] = '.';
-        mapa[10][13] = '.';
-        mapa[5][13] = '.';
-        mapa[15][7] = '.';
-        mapa[5][7] = '.';
+        state->mapa[12][15] = '.';
+        state->mapa[8][15] = '.';
+        state->mapa[10][13] = '.';
+        state->mapa[5][13] = '.';
+        state->mapa[15][7] = '.';
+        state->mapa[5][7] = '.';
 
-        npcX = -1;
-        npcY = -1;
+        state->enemyX = -1;
+        state->enemyY = -1;
 
-        desenharCasaInvertida(mapa, 10, 2, &portaCasaGrandeX, &portaCasaGrandeY);
+        desenharCasaInvertida(state->mapa, 10, 2, &doorHouseX, &doorHouseY);
 
-        mapa[10][12] = '@';
+        state->mapa[10][10] = '@'; // Chave da Fase 1
 
-        *playerX = 1;
-        *playerY = 1;
+        state->playerX = 1;
+        state->playerY = 1;
 
-    } else {
+    } else if (state->currentMapType == 2) { // Fase 2
+        state->playerX = 1; state->playerY = 1;
+        state->enemyX = TAM / 2; state->enemyY = TAM / 2; // Monstro nasce no meio
+
+        state->mapa[3][3] = '*'; state->mapa[3][4] = '*'; state->mapa[3][5] = '*';
+        state->mapa[4][3] = '*'; state->mapa[5][3] = '*';
+
+        state->mapa[8][8] = '*'; state->mapa[8][9] = '*'; state->mapa[8][10] = '*';
+        state->mapa[9][10] = '*'; state->mapa[10][10] = '*';
+
+        state->mapa[4][12] = '*'; state->mapa[4][13] = '*';
+        state->mapa[8][16] = '*'; state->mapa[8][17] = '*';
+
+        state->mapa[2][12] = '\\'; state->mapa[2][13] = '/';
+        state->mapa[3][12] = '|';  state->mapa[3][13] = '|';
+
+        state->mapa[6][16] = '\\'; state->mapa[6][17] = '/';
+        state->mapa[7][16] = '|';  state->mapa[7][17] = '|';
+
+        state->mapa[10][5] = 'D';
+        state->mapa[14][18] = '@'; // Chave da Fase 2 (não desaparece)
+
+        state->mapa[5][5] = '#';
+        state->mapa[6][5] = '#';
+        state->mapa[7][5] = '#';
+        state->mapa[10][14] = '#';
+        state->mapa[15][10] = '#';
+
+    } else { // Vila
         for (int i = 5; i < 15; i++) {
-            mapa[10][i] = '*';
+            state->mapa[10][i] = '*';
         }
 
-        desenharCasa2x3(mapa, 3, 2);
-        desenharCasa2x3(mapa, 15, 4);
-        desenharCasa2x3(mapa, 7, 14);
+        desenharCasa2x3(state->mapa, 3, 2);
+        desenharCasa2x3(state->mapa, 15, 4);
+        desenharCasa2x3(state->mapa, 7, 14);
 
-        desenharCasaMaior(mapa, 12, 11, &portaCasaGrandeX, &portaCasaGrandeY);
+        desenharCasaMaior(state->mapa, 12, 11, &doorHouseX, &doorHouseY, &state->enemyX, &state->enemyY);
 
-        mapa[5][18] = '@';
+        state->mapa[5][18] = '@';
 
-        *playerX = 1;
-        *playerY = 1;
+        state->playerX = 1;
+        state->playerY = 1;
     }
-    
-    system("cls");
-    desenharMapa(mapa);
 }
 
+// Move o inimigo aleatoriamente (apenas na Fase 2)
+void moveEnemy(GameState* state) {
+    if (state->currentMapType != 2) return;
+
+    if (state->enemyX != -1 && state->enemyY != -1) {
+        state->mapa[state->enemyY][state->enemyX] = state->enemyOccupiedTile;
+    }
+
+    int dx[] = {0, 0, -1, 1};
+    int dy[] = {-1, 1, 0, 0};
+
+    int direcao = rand() % 4;
+    int nx = state->enemyX + dx[direcao];
+    int ny = state->enemyY + dy[direcao];
+
+    if (nx >= 0 && nx < TAM && ny >= 0 && ny < TAM && state->mapa[ny][nx] != '*' && state->mapa[ny][nx] != '#') {
+        if (nx != state->playerX || ny != state->playerY) {
+            state->enemyOccupiedTile = state->mapa[ny][nx];
+            state->enemyX = nx;
+            state->enemyY = ny;
+            state->mapa[state->enemyY][state->enemyX] = 'X';
+        }
+    }
+}
+
+// Função principal do jogo
 void play() {
-    char mapa[TAM][TAM];
-    int x = 1, y = 1;
+    GameState state;
+    state.lives = 3;
 
-    strcpy(falasNPC[0], "Olá! Você deve ser o herói enviado para salvar a vila.");
-    strcpy(falasNPC[1], "Nós estivemos com diversos problemas com essa casa que apareceu do nada.");
-    strcpy(falasNPC[2], "Perdemos plantações e tivemos diversas pessoas adoecendo; alguns já entraram, mas sempre voltam doentes.");
-    strcpy(falasNPC[3], "Para você entrar nesta casa, deve achar a chave que abrirá a porta.");
-    strcpy(falasNPC[4], "Tome cuidado, lá tem armadilhas, monstros e teletransportes.");
-    strcpy(falasNPC[5], "Uma das pessoas que foram lá achou essa chave que deve abrir alguma coisa.");
-    strcpy(falasNPC[6], "Boa sorte!!!!");
+    strcpy(state.npcDialogues[0], "Olá! Você deve ser o herói enviado para salvar a vila.");
+    strcpy(state.npcDialogues[1], "Nós estivemos com diversos problemas com essa casa que apareceu do nada.");
+    strcpy(state.npcDialogues[2], "Perdemos plantações e tivemos diversas pessoas adoecendo; alguns já entraram, mas sempre voltam doentes.");
+    strcpy(state.npcDialogues[3], "Para você entrar nesta casa, deve achar a chave que abrirá a porta.");
+    strcpy(state.npcDialogues[4], "Tome cuidado, lá tem armadilhas, monstros e teletransportes.");
+    strcpy(state.npcDialogues[5], "Uma das pessoas que foram lá achou essa chave que deve abrir alguma coisa.");
+    strcpy(state.npcDialogues[6], "Boa sorte!!!!");
 
-    carregarMapa(mapa, &x, &y, 0);
+    loadMap(&state, 0);
 
-    char tecla;
+    char keyPress;
 
     while (1) {
-        moverCursor(x, y);
+        desenharMapa(&state);
+        
+        moverCursor(state.playerX, state.playerY);
         printf("&");
 
-        char linhaVazia[TAM_FALA * 2 + 1];
-        memset(linhaVazia, ' ', sizeof(linhaVazia) - 1);
-        linhaVazia[sizeof(linhaVazia) - 1] = '\0';
-
-        moverCursor(0, TAM);
-        printf("%s", linhaVazia);
-        moverCursor(0, TAM + 1);
-        printf("%s", linhaVazia);
-
-        moverCursor(0, TAM);
-        printf("Use W A S D para mover, Q para sair. Pressione 'I' para interagir. Chave: %s", temChave ? "SIM" : "NAO");
-
-        if (dialogoAtivo) {
-            moverCursor(0, TAM + 1);
-            printf("NPC: %s", falasNPC[indiceFalaAtual]);
-        }
-
-        tecla = _getch();
-
-        moverCursor(x, y);
-        if (mapaAtualTipo == 0 && x == npcX && y == npcY && !dialogoAtivo) {
-            printf("P ");
-        } else {
-            printf("%c ", mapa[y][x]);
+        if (state.currentMapType == 0 && (state.playerX != state.enemyX || state.playerY != state.enemyY)) {
+            moverCursor(state.enemyX, state.enemyY);
+            printf("P");
         }
         
-        if (tecla == 'q' || tecla == 'Q') break;
+        if (state.currentMapType == 2 && (state.playerX != state.enemyX || state.playerY != state.enemyY)) {
+            moverCursor(state.enemyX, state.enemyY);
+            printf("X");
+        }
 
-        if (tecla == 'i' || tecla == 'I') {
-            if (dialogoAtivo) {
-                indiceFalaAtual++;
-                if (indiceFalaAtual >= MAX_FALAS) {
-                    dialogoAtivo = 0;
-                    indiceFalaAtual = 0;
-                    moverCursor(0, TAM + 1);
-                    printf("%s", linhaVazia);
+        char emptyLine[TAM_FALA * 2 + 1];
+        memset(emptyLine, ' ', sizeof(emptyLine) - 1);
+        emptyLine[sizeof(emptyLine) - 1] = '\0';
+
+        moverCursor(0, TAM + 1);
+        printf("%s", emptyLine);
+
+        if (state.dialogActive) {
+            moverCursor(0, TAM + 1);
+            printf("NPC: %s", state.npcDialogues[state.currentDialogueIndex]);
+        }
+
+        keyPress = _getch();
+
+        moverCursor(state.playerX, state.playerY);
+        if (state.currentMapType == 0 && state.playerX == state.enemyX && state.playerY == state.enemyY && !state.dialogActive) {
+            printf("P ");
+        } else if (state.currentMapType == 2 && state.playerX == state.enemyX && state.playerY == state.enemyY) {
+            printf("X ");
+        }
+        else {
+            printf("%c ", state.mapa[state.playerY][state.playerX]);
+        }
+
+        if (keyPress == 'q' || keyPress == 'Q') break;
+
+        if (keyPress == 'i' || keyPress == 'I') {
+            if (state.dialogActive) {
+                state.currentDialogueIndex++;
+                if (state.currentDialogueIndex >= MAX_FALAS) {
+                    state.dialogActive = 0;
+                    state.currentDialogueIndex = 0;
                 }
             } else {
-                char itemAtual = mapa[y][x];
+                char currentItem = state.mapa[state.playerY][state.playerX];
 
-                if (itemAtual == '@') {
-                    temChave = 1;
-                    mapa[y][x] = '.';
+                if (currentItem == '@') {
+                    state.hasKey = 1;
+                    if (state.currentMapType != 2) {
+                        state.mapa[state.playerY][state.playerX] = '.';
+                    }
 
                     for (int i = 0; i < TAM; i++) {
                         for (int j = 0; j < TAM; j++) {
-                            if (mapa[i][j] == 'D') {
-                                mapa[i][j] = '=';
+                            if (state.mapa[i][j] == 'D') {
+                                state.mapa[i][j] = '=';
                             }
                         }
                     }
-                    
-                    system("cls");
-                    desenharMapa(mapa);
-                }
-                else if (x == npcX && y == npcY && mapaAtualTipo == 0) {
-                    dialogoAtivo = 1;
-                    indiceFalaAtual = 0;
-                }
-                else if (itemAtual == '=') {
-                    if (mapaAtualTipo == 0) {
-                        carregarMapa(mapa, &x, &y, 1);
-                    } else {
-                        carregarMapa(mapa, &x, &y, 0);
+                } else if (state.playerX == state.enemyX && state.playerY == state.enemyY && state.currentMapType == 0) {
+                    state.dialogActive = 1;
+                    state.currentDialogueIndex = 0;
+                } else if (currentItem == '=') {
+                    if (state.currentMapType == 0) {
+                        loadMap(&state, 1);
+                    } else if (state.currentMapType == 1) {
+                        loadMap(&state, 2);
+                    } else if (state.currentMapType == 2) {
+                        loadMap(&state, 0);
                     }
                 }
             }
         }
 
-        int novoX = x, novoY = y;
-        if (tecla == 'w') novoY--;
-        if (tecla == 's') novoY++;
-        if (tecla == 'a') novoX--;
-        if (tecla == 'd') novoX++;
+        int newX = state.playerX, newY = state.playerY;
+        if (keyPress == 'w') newY--;
+        if (keyPress == 's') newY++;
+        if (keyPress == 'a') newX--;
+        if (keyPress == 'd') newX++;
 
-        if (novoX >= 0 && novoX < TAM && novoY >= 0 && novoY < TAM) {
-            if (mapa[novoY][novoX] == '#') {
+        if (newX >= 0 && newX < TAM && newY >= 0 && newY < TAM) {
+            if (!state.dialogActive && (keyPress == 'w' || keyPress == 's' || keyPress == 'a' || keyPress == 'd')) {
+                if (podeMover(&state, newX, newY)) {
+                    state.playerX = newX;
+                    state.playerY = newY;
+                }
+            }
+        }
+
+        if (state.mapa[state.playerY][state.playerX] == '#') {
+            state.lives--;
+            if (state.lives <= 0) {
                 system("cls");
                 printf("\n\nVoce tocou nos espinhos e morreu!\n");
                 printf("Fim de jogo. Pressione qualquer tecla para voltar ao menu...\n");
                 _getch();
                 return;
-            }
-
-            if (!dialogoAtivo) {
-                if (podeMover(mapa, novoX, novoY)) {
-                    x = novoX;
-                    y = novoY;
-                }
+            } else {
+                moverCursor(0, TAM + 2);
+                printf("Voce pisou nos espinhos e perdeu uma vida! Vidas restantes: %d", state.lives);
+                Sleep(1500);
+                state.playerX = 1; state.playerY = 1;
             }
         }
 
+        moveEnemy(&state);
+
+        if (state.currentMapType == 2 && state.playerX == state.enemyX && state.playerY == state.enemyY) {
+            state.lives--;
+            if (state.lives <= 0) {
+                system("cls");
+                printf("\n\nVoce foi pego pelo inimigo e morreu!\n");
+                printf("Fim de jogo. Pressione qualquer tecla para voltar ao menu...\n");
+                _getch();
+                return;
+            } else {
+                moverCursor(0, TAM + 2);
+                printf("Voce foi pego pelo inimigo e perdeu uma vida! Vidas restantes: %d", state.lives);
+                Sleep(1500);
+                loadMap(&state, state.currentMapType);
+            }
+        }
+        
         Sleep(30);
     }
 
     system("cls");
 }
 
+// --- Função de Créditos ---
 void credits() {
     system("cls");
     printf("\n=== Creditos ===\n");
@@ -296,10 +398,12 @@ void credits() {
     system("cls");
 }
 
+// --- Função Principal (Menu) ---
 int main() {
     setlocale(LC_ALL, "portuguese");
+    srand(time(NULL));
 
-    int escolha;
+    int choice;
     
     while (1) {
         printf("\n=== Dungeon Crawler ===\n");
@@ -309,13 +413,13 @@ int main() {
         printf("3. Sair\n");
         printf("Escolha uma opcao: ");
         
-        while (scanf("%d", &escolha) != 1) {
+        while (scanf("%d", &choice) != 1) { 
             printf("Entrada invalida! Por favor, digite um numero: ");
             while (getchar() != '\n');
         }
         while (getchar() != '\n');
 
-        switch (escolha) {
+        switch (choice) {
             case 1: play(); break;
             case 2: credits(); break;
             case 3: printf("Saindo do Jogo...\n"); return 0;
@@ -323,4 +427,4 @@ int main() {
         }
     }
     return 0;
-} 
+}
