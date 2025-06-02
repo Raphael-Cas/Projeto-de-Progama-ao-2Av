@@ -4,29 +4,37 @@
 #include <windows.h>
 #include <time.h>
 
-#define TAM 40
-#define NUM_PAREDES 100
+#define TAM 20
+#define NUM_PAREDES 40
 #define VIDAS_INICIAIS 3
 
-int mapaAtual = 1; // Controla qual mapa está sendo exibido
+int mapaAtual = 1;
 
-void desenharMapa(char mapa[TAM][TAM], int vidas, int temChave) {
+// Função para limpar a tela
+void limparTela() {
     system("cls");
+}
+
+// Desenha o mapa na tela
+void desenharMapa(char mapa[TAM][TAM], int vidas, int temChave) {
+    limparTela();
     for (int i = 0; i < TAM; i++) {
         for (int j = 0; j < TAM; j++) {
             printf("%c ", mapa[i][j]);
         }
         printf("\n");
     }
-    printf("\nUse W A S D para mover, Q para sair. Pressione 'I' para interagir.\n");
+    printf("\nUse W A S D para mover, Q para sair.\n");
     printf("Chave: %s | Vidas: %d\n", temChave ? "SIM" : "NAO", vidas);
 }
 
-void inicializarMapa1(char mapa[TAM][TAM], int *px, int *py, int *vx, int *vy, int *tx, int *ty) {
+// Inicializa o mapa 1
+void inicializarMapa1(char mapa[TAM][TAM], int *px, int *py, int *vx, int *vy) {
     for (int i = 0; i < TAM; i++)
         for (int j = 0; j < TAM; j++)
             mapa[i][j] = '.';
 
+    // Bordas
     for (int i = 0; i < TAM; i++) {
         mapa[0][i] = '*';
         mapa[TAM - 1][i] = '*';
@@ -39,27 +47,28 @@ void inicializarMapa1(char mapa[TAM][TAM], int *px, int *py, int *vx, int *vy, i
     while (paredes < NUM_PAREDES) {
         int x = rand() % (TAM - 2) + 1;
         int y = rand() % (TAM - 2) + 1;
-        if (mapa[y][x] == '.' && mapa[y - 1][x] != '#' && mapa[y + 1][x] != '#' &&
-            mapa[y][x - 1] != '#' && mapa[y][x + 1] != '#') {
-            mapa[y][x] = '#';
+        if (mapa[y][x] == '.') {
+            mapa[y][x] = '#';  // Espinhos
             paredes++;
         }
     }
 
-    mapa[10][10] = '@';
-    mapa[20][20] = 'D';
-    mapa[5][5] = '>';
-    mapa[10][9] = '<';
+    // Objetos importantes
+    mapa[10][10] = '@'; // Chave
+    mapa[15][15] = 'D'; // Porta
+    mapa[5][5] = '>';   // Teleporte de ida
+    mapa[10][5] = '<';  // Teleporte de volta
 
-    *px = 1; *py = 1;
-    mapa[*py][*px] = '&';
+    *px = 1;
+    *py = 1;
+    mapa[*py][*px] = '&'; // Jogador
 
-    *vx = TAM - 2; *vy = TAM - 2;
-    mapa[*vy][*vx] = 'V';
-
-    *tx = 5; *ty = 5;
+    *vx = TAM - 2;
+    *vy = TAM - 2;
+    mapa[*vy][*vx] = 'V'; // Vilão
 }
 
+// Inicializa o mapa 2 (mais simples)
 void inicializarMapa2(char mapa[TAM][TAM], int *px, int *py, int *vx, int *vy) {
     for (int i = 0; i < TAM; i++)
         for (int j = 0; j < TAM; j++)
@@ -72,22 +81,23 @@ void inicializarMapa2(char mapa[TAM][TAM], int *px, int *py, int *vx, int *vy) {
         mapa[i][TAM - 1] = '*';
     }
 
-    mapa[15][10] = '#';
-    mapa[25][25] = 'D';
+    // Obstáculos e porta
+    mapa[10][10] = '#';
+    mapa[15][15] = 'D';
 
-    *px = 1; *py = 1;
+    *px = 1;
+    *py = 1;
     mapa[*py][*px] = '&';
 
-    *vx = TAM - 2; *vy = TAM - 2;
+    *vx = TAM - 2;
+    *vy = TAM - 2;
     mapa[*vy][*vx] = 'V';
 }
 
+// Movimenta o inimigo em direção ao jogador
 void moverInimigo(char mapa[TAM][TAM], int *vx, int *vy, int px, int py) {
-    int dx = 0, dy = 0;
-    if (*vx < px) dx = 1;
-    else if (*vx > px) dx = -1;
-    if (*vy < py) dy = 1;
-    else if (*vy > py) dy = -1;
+    int dx = (px > *vx) ? 1 : (px < *vx) ? -1 : 0;
+    int dy = (py > *vy) ? 1 : (py < *vy) ? -1 : 0;
 
     int nx = *vx + dx;
     int ny = *vy + dy;
@@ -100,18 +110,20 @@ void moverInimigo(char mapa[TAM][TAM], int *vx, int *vy, int px, int py) {
     }
 }
 
+// Função principal do jogo
 void jogar() {
     char mapa[TAM][TAM];
-    int px, py, vx, vy, tx, ty;
+    int px, py, vx, vy;
     int temChave = 0;
     int vidas = VIDAS_INICIAIS;
     char tecla;
 
-    inicializarMapa1(mapa, &px, &py, &vx, &vy, &tx, &ty);
+    inicializarMapa1(mapa, &px, &py, &vx, &vy);
 
     while (1) {
         desenharMapa(mapa, vidas, temChave);
 
+        // Verifica colisão com inimigo
         if (px == vx && py == vy) {
             vidas--;
             if (vidas <= 0) {
@@ -120,7 +132,9 @@ void jogar() {
             } else {
                 printf("Você foi pego! Reiniciando posição...\n");
                 Sleep(1000);
+                mapa[py][px] = '.';
                 px = 1; py = 1;
+                mapa[py][px] = '&';
                 continue;
             }
         }
@@ -134,13 +148,14 @@ void jogar() {
         if (tecla == 'a' || tecla == 'A') nx--;
         if (tecla == 'd' || tecla == 'D') nx++;
 
-        if (mapa[ny][nx] == '.' || mapa[ny][nx] == '@' || mapa[ny][nx] == 'D' ||
-            mapa[ny][nx] == '#' || mapa[ny][nx] == '<' || mapa[ny][nx] == '>') {
+        // Verifica se pode andar (não anda em parede '*')
+        if (mapa[ny][nx] != '*' && mapa[ny][nx] != 'V') {
             mapa[py][px] = '.';
             px = nx;
             py = ny;
         }
 
+        // Pisou em espinhos
         if (mapa[py][px] == '#') {
             vidas--;
             printf("Você pisou em espinhos! Vidas restantes: %d\n", vidas);
@@ -149,36 +164,46 @@ void jogar() {
                 printf("Game Over!\n");
                 break;
             }
+            mapa[py][px] = '.';
             px = 1; py = 1;
         }
 
-        if (tecla == 'i' || tecla == 'I') {
-            if (mapa[py][px] == '@') {
-                temChave = 1;
-                mapa[py][px] = '.';
-                printf("Você pegou a chave!\n");
-                Sleep(1000);
-            } else if (mapa[py][px] == 'D') {
-                if (temChave && mapaAtual == 1) {
-                    printf("Você abriu a porta para o próximo mapa!\n");
-                    Sleep(1000);
-                    mapaAtual = 2;
-                    inicializarMapa2(mapa, &px, &py, &vx, &vy);
-                    continue;
-                } else if (mapaAtual == 2) {
-                    printf("Você venceu o jogo!\n");
-                    break;
-                } else {
-                    printf("Você precisa da chave.\n");
-                    Sleep(1000);
-                }
-            } else if (mapa[py][px] == '>') {
-                px = 10; py = 9;
-                printf("Teleportado!\n");
-                Sleep(1000);
-            } else if (mapa[py][px] == '<') {
-                px = tx; py = ty;
-                printf("Teleportado de volta!\n");
+        // Pega chave
+        if (mapa[py][px] == '@') {
+            temChave = 1;
+            mapa[py][px] = '.';
+            printf("Você pegou a chave!\n");
+            Sleep(1000);
+        }
+
+        // Teleporte
+        if (mapa[py][px] == '>') {
+            px = 10;
+            py = 5;
+            printf("Teleportado!\n");
+            Sleep(1000);
+        }
+        if (mapa[py][px] == '<') {
+            px = 5;
+            py = 5;
+            printf("Teleportado de volta!\n");
+            Sleep(1000);
+        }
+
+        // Porta
+        if (mapa[py][px] == 'D') {
+            if (temChave && mapaAtual == 1) {
+                printf("Você abriu a porta para o próximo mapa!\n");
+                Sleep(1500);
+                mapaAtual = 2;
+                inicializarMapa2(mapa, &px, &py, &vx, &vy);
+                continue;
+            } else if (mapaAtual == 2) {
+                printf("Parabéns! Você venceu o jogo!\n");
+                Sleep(2000);
+                break;
+            } else {
+                printf("Você precisa da chave.\n");
                 Sleep(1000);
             }
         }
@@ -189,30 +214,35 @@ void jogar() {
     }
 }
 
+// Tela de créditos
 void creditos() {
-    system("cls");
+    limparTela();
     printf("=== Créditos ===\n");
-    printf("Desenvolvedor: Andre Bispo e Raphael Castro\n");
-    printf("Agradecimentos: Gepeto e GitHub Copilot C\n");
+    printf("Desenvolvedores: Andre Bispo e Raphael Castro\n");
+    printf("Agradecimentos: Gepeto, GitHub Copilot e ChatGPT\n");
     printf("\nPressione qualquer tecla para voltar ao menu...\n");
     _getch();
 }
 
+// Menu principal
 int main() {
     int opcao;
     while (1) {
-        system("cls");
+        limparTela();
         printf("=== Dungeon Crawler ===\n");
         printf("1. Jogar\n");
         printf("2. Créditos\n");
         printf("3. Sair\n");
         printf("Escolha uma opção: ");
         scanf("%d", &opcao);
+        fflush(stdin);
         switch (opcao) {
             case 1: jogar(); break;
             case 2: creditos(); break;
             case 3: return 0;
-            default: printf("Opção inválida.\n"); Sleep(1000);
+            default:
+                printf("Opção inválida.\n");
+                Sleep(1000);
         }
     }
 }
