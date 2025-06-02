@@ -33,6 +33,6 @@ Passo 2: Baixe o código do jogo
 Crie uma pasta no seu computador para o jogo, por exemplo: C:\DungeonCrawler.
 Copie o código do jogo (arquivo Jogo 2 av.cpp) para essa pasta.
 
-Rode o jogo e se divirta!!!! 😎 .
+Rode o jogo seguinto o tutorial de instalacao do seu compilador escolhido e se divirta!!!! 😎 .
 
 
