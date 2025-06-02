@@ -1,24 +1,25 @@
 #include <stdio.h>
-#include <stdlib.h>   // Para usar rand() e srand()
-#include <conio.h>    // Para _getch()
-#include <windows.h>  // Para COORD, SetConsoleCursorPosition, Sleep, system("cls")
-#include <string.h>   // Para usar strcpy e memset
-#include <locale.h>   // Para textos com caracteres especiais
-#include <time.h>     // Para usar time() na seed do rand()
+#include <stdlib.h>
+#include <conio.h>
+#include <windows.h>
+#include <string.h>
+#include <locale.h>
+#include <time.h>
 
-#define TAM 20
+#define TAM_MAX 30
 #define MAX_FALAS 7
 #define TAM_FALA 200
 
 // --- Estrutura do Estado do Jogo ---
 typedef struct {
-    char mapa[TAM][TAM];
+    char mapa[TAM_MAX][TAM_MAX];
+    int current_tam;
     int playerX, playerY;
     int enemyX, enemyY;
-    char enemyOccupiedTile;
+    char enemyOccupiedTile; // O caractere original do tile que o monstro estava ocupando
     int hasKey;
     int lives;
-    int currentMapType;
+    int currentMapType; // 0: Vila, 1: Fase 1, 2: Fase 2
     int dialogActive;
     int currentDialogueIndex;
     char npcDialogues[MAX_FALAS][TAM_FALA];
@@ -32,8 +33,8 @@ void moverCursor(int x, int y) {
 
 void desenharMapa(const GameState* state) {
     system("cls");
-    for (int i = 0; i < TAM; i++) {
-        for (int j = 0; j < TAM; j++) {
+    for (int i = 0; i < state->current_tam; i++) {
+        for (int j = 0; j < state->current_tam; j++) {
             printf("%c ", state->mapa[i][j]);
         }
         printf("\n");
@@ -42,16 +43,31 @@ void desenharMapa(const GameState* state) {
            state->hasKey ? "SIM" : "NAO", state->lives);
 }
 
-// Verifica se o jogador pode mover para uma coordenada específica
 int podeMover(const GameState* state, int x, int y) {
+    if (x < 0 || x >= state->current_tam || y < 0 || y >= state->current_tam) return 0;
     if (state->mapa[y][x] == '*' || state->mapa[y][x] == 'D') return 0;
     if (state->mapa[y][x] == '#') return 1;
     return 1;
 }
 
-// Desenha uma casa 2x3
-void desenharCasa2x3(char mapa[TAM][TAM], int startX, int startY) {
-    if (startX + 1 >= TAM || startY + 2 >= TAM) return;
+// --- Funções de Criação de Elementos do Mapa ---
+
+void inicializarMapa(char mapa[TAM_MAX][TAM_MAX], int tam_mapa, char borderChar) {
+    for (int i = 0; i < tam_mapa; i++) {
+        for (int j = 0; j < tam_mapa; j++) {
+            mapa[i][j] = '.'; // Preenche com chão
+        }
+    }
+    for (int i = 0; i < tam_mapa; i++) {
+        mapa[0][i] = borderChar;
+        mapa[tam_mapa - 1][i] = borderChar;
+        mapa[i][0] = borderChar;
+        mapa[i][tam_mapa - 1] = borderChar;
+    }
+}
+
+void desenharCasaMenor(char mapa[TAM_MAX][TAM_MAX], int tam_mapa, int startX, int startY) {
+    if (startX + 1 >= tam_mapa || startY + 2 >= tam_mapa) return;
     mapa[startY][startX] = '/';
     mapa[startY][startX + 1] = '\\';
     mapa[startY + 1][startX] = '*';
@@ -60,9 +76,8 @@ void desenharCasa2x3(char mapa[TAM][TAM], int startX, int startY) {
     mapa[startY + 2][startX + 1] = '*';
 }
 
-// Desenha uma casa maior (da Vila)
-void desenharCasaMaior(char mapa[TAM][TAM], int startX, int startY, int* doorX, int* doorY, int* npcX, int* npcY) {
-    if (startX + 2 >= TAM || startY + 3 >= TAM) return;
+void desenharCasaMaior(char mapa[TAM_MAX][TAM_MAX], int tam_mapa, int startX, int startY, int* doorX, int* doorY, int* npcX, int* npcY) {
+    if (startX + 2 >= tam_mapa || startY + 3 >= tam_mapa) return;
     mapa[startY][startX + 1] = '*';
     mapa[startY + 1][startX] = '/';
     mapa[startY + 1][startX + 1] = '|';
@@ -71,7 +86,7 @@ void desenharCasaMaior(char mapa[TAM][TAM], int startX, int startY, int* doorX, 
     mapa[startY + 2][startX + 1] = '*';
     mapa[startY + 2][startX + 2] = '*';
     mapa[startY + 3][startX] = '*';
-    mapa[startY + 3][startX + 1] = 'D'; // Porta
+    mapa[startY + 3][startX + 1] = 'D';
     mapa[startY + 3][startX + 2] = '*';
 
     if (doorX != NULL) *doorX = startX + 1;
@@ -80,18 +95,17 @@ void desenharCasaMaior(char mapa[TAM][TAM], int startX, int startY, int* doorX, 
     if (npcX != NULL && npcY != NULL) {
         *npcX = startX - 2;
         *npcY = startY + 3;
-        if (*npcX >= 0 && *npcY >= 0 && *npcX < TAM && *npcY < TAM) {
-            mapa[*npcY][*npcX] = 'P'; // 'P' para NPC
+        if (*npcX >= 0 && *npcY >= 0 && *npcX < tam_mapa && *npcY < tam_mapa) {
+            mapa[*npcY][*npcX] = 'P';
         }
     }
 }
 
-// Desenha uma casa invertida (da Fase 1)
-void desenharCasaInvertida(char mapa[TAM][TAM], int startX, int startY, int* doorX, int* doorY) {
-    if (startX + 2 >= TAM || startY + 3 >= TAM) return;
+void desenharCasaInvertida(char mapa[TAM_MAX][TAM_MAX], int tam_mapa, int startX, int startY, int* doorX, int* doorY) {
+    if (startX + 2 >= tam_mapa || startY + 3 >= tam_mapa) return;
     
     mapa[startY][startX] = '#';
-    mapa[startY][startX + 1] = 'D'; // Porta (na Fase 1)
+    mapa[startY][startX + 1] = 'D';
     mapa[startY][startX + 2] = '#';
 
     mapa[startY + 1][startX] = '#';
@@ -107,115 +121,212 @@ void desenharCasaInvertida(char mapa[TAM][TAM], int startX, int startY, int* doo
     if (doorY != NULL) *doorY = startY;
 }
 
+void adicionarEspinhos(char mapa[TAM_MAX][TAM_MAX], int tam_mapa) {
+    if (tam_mapa == 20) { // Espinhos para Fase 1
+        for (int i = 2; i < tam_mapa - 2; i++) {
+            mapa[i][5] = '#';
+            mapa[i][10] = '#';
+            mapa[i][15] = '#';
+        }
+        for (int j = 2; j < tam_mapa - 2; j++) {
+            mapa[5][j] = '#';
+            mapa[10][j] = '#';
+            mapa[15][j] = '#';
+        }
+        // Caminhos livres nos espinhos (portas para a próxima área)
+        mapa[5][6] = '.'; // Espinho (5,6)
+        mapa[5][7] = '.'; // Era para ser espinho (5,7) mas está livre. MANTIDO LIVRE como pedido.
+        mapa[10][11] = '.'; // Espinho (10,11)
+        mapa[10][12] = '.'; // Era para ser espinho (10,12) mas está livre. MANTIDO LIVRE como pedido.
+        mapa[15][4] = '.'; mapa[15][3] = '.';
+        mapa[12][15] = '.';
+        mapa[8][15] = '.';
+        mapa[10][13] = '.';
+        mapa[5][13] = '.';
+        mapa[15][7] = '.';
+        mapa[5][7] = '.';
+    }
+    if (tam_mapa == 30) { // Espinhos para Fase 2
+        mapa[5][5] = '#';
+        mapa[6][5] = '#';
+        mapa[7][5] = '#';
+        mapa[10][14] = '#';
+        mapa[15][10] = '#';
+
+        for (int i = 1; i < tam_mapa - 1; i += 5) {
+            for (int j = 1; j < tam_mapa - 1; j += 7) {
+                if (rand() % 4 == 0) {
+                    mapa[i][j] = '#';
+                }
+            }
+        }
+    }
+}
+
+
+void adicionarChave(char mapa[TAM_MAX][TAM_MAX], int x, int y) {
+    if (x > 0 && x < TAM_MAX - 1 && y > 0 && y < TAM_MAX - 1) {
+        mapa[y][x] = '@';
+    }
+}
+
+void adicionarMonstro(char mapa[TAM_MAX][TAM_MAX], int tam_mapa, int* enemyX, int* enemyY) {
+    // Garante que o monstro comece em um tile '.' e não sobre um obstáculo ou borda
+    int randX, randY;
+    do {
+        randX = rand() % (tam_mapa - 2) + 1; // Entre 1 e tam_mapa - 2
+        randY = rand() % (tam_mapa - 2) + 1; // Entre 1 e tam_mapa - 2
+    } while (mapa[randY][randX] != '.'); // Garante que nasce no chão livre
+    
+    *enemyX = randX;
+    *enemyY = randY;
+    // O caractere 'X' será desenhado pelo loop principal do jogo
+}
+
+void atualizarPortas(char mapa[TAM_MAX][TAM_MAX], int tam_mapa) {
+    for (int i = 0; i < tam_mapa; i++) {
+        for (int j = 0; j < tam_mapa; j++) {
+            if (mapa[i][j] == 'D') {
+                mapa[i][j] = '='; // Porta aberta
+            }
+        }
+    }
+}
+
+// --- Funções de Criação de Mapas por Fase ---
+
+void criarMapaVila(GameState* state) {
+    state->current_tam = 20;
+    inicializarMapa(state->mapa, state->current_tam, '*');
+
+    for (int i = 5; i < 15; i++) {
+        state->mapa[10][i] = '*';
+    }
+
+    desenharCasaMenor(state->mapa, state->current_tam, 3, 2);
+    desenharCasaMenor(state->mapa, state->current_tam, 15, 4);
+    desenharCasaMenor(state->mapa, state->current_tam, 7, 14);
+
+    int doorHouseX, doorHouseY;
+    desenharCasaMaior(state->mapa, state->current_tam, 12, 11, &doorHouseX, &doorHouseY, &state->enemyX, &state->enemyY);
+
+    adicionarChave(state->mapa, 5, 18);
+
+    state->playerX = 1;
+    state->playerY = 1;
+}
+
+void criarMapaFase1(GameState* state) {
+    state->current_tam = 20;
+    inicializarMapa(state->mapa, state->current_tam, '#');
+
+    adicionarEspinhos(state->mapa, state->current_tam);
+
+    int doorHouseX, doorHouseY;
+    desenharCasaInvertida(state->mapa, state->current_tam, 10, 2, &doorHouseX, &doorHouseY);
+
+    adicionarChave(state->mapa, 10, 10);
+
+    state->enemyX = -1;
+    state->enemyY = -1;
+
+    state->playerX = 1;
+    state->playerY = 1;
+}
+
+void criarMapaFase2(GameState* state) {
+    state->current_tam = 30;
+    inicializarMapa(state->mapa, state->current_tam, '#'); // Borda de espinhos
+
+    // Preenche a área central com paredes
+    for (int i = 1; i < state->current_tam - 1; i++) {
+        for (int j = 1; j < state->current_tam - 1; j++) {
+            // Preenche tudo com '.' e depois adiciona os obstáculos
+            state->mapa[i][j] = '.'; 
+        }
+    }
+
+    // Paredes verticais
+    for (int i = 5; i < 25; i++) {
+        state->mapa[i][7] = '*';
+        state->mapa[i][22] = '*';
+    }
+    // Paredes horizontais
+    for (int j = 5; j < 25; j++) {
+        state->mapa[7][j] = '*';
+        state->mapa[22][j] = '*';
+    }
+
+    // Aberturas nas barreiras
+    state->mapa[10][7] = '.';
+    state->mapa[15][7] = '.';
+    state->mapa[20][7] = '.';
+    state->mapa[10][22] = '.';
+    state->mapa[15][22] = '.';
+    state->mapa[20][22] = '.';
+    state->mapa[7][10] = '.';
+    state->mapa[7][15] = '.';
+    state->mapa[7][20] = '.';
+    state->mapa[22][10] = '.';
+    state->mapa[22][15] = '.';
+    state->mapa[22][20] = '.';
+
+    // Obstáculos menores
+    state->mapa[3][3] = '*'; state->mapa[3][4] = '*'; state->mapa[3][5] = '*';
+    state->mapa[4][3] = '*'; state->mapa[5][3] = '*';
+
+    state->mapa[8][8] = '*'; state->mapa[8][9] = '*'; state->mapa[8][10] = '*';
+    state->mapa[9][10] = '*'; state->mapa[10][10] = '*';
+
+    state->mapa[4][25] = '*'; state->mapa[4][26] = '*';
+    state->mapa[8][28] = '*'; state->mapa[8][27] = '*';
+
+    state->mapa[25][5] = '*'; state->mapa[26][5] = '*';
+    state->mapa[28][10] = '*'; state->mapa[28][11] = '*';
+
+    // Chave e porta
+    adicionarChave(state->mapa, 1, state->current_tam - 2); // Chave no canto superior esquerdo
+    state->mapa[state->current_tam - 2][state->current_tam - 2] = 'D'; // Porta no canto inferior direito
+
+    adicionarEspinhos(state->mapa, state->current_tam); // Adiciona espinhos na Fase 2
+    adicionarMonstro(state->mapa, state->current_tam, &state->enemyX, &state->enemyY); // Monstro na Fase 2
+
+    state->playerX = 1;
+    state->playerY = 1;
+    state->enemyOccupiedTile = state->mapa[state->enemyY][state->enemyX]; // Inicializa o tile ocupado pelo monstro
+}
+
 // Carrega um novo mapa baseado no tipo (Vila, Fase 1 ou Fase 2)
 void loadMap(GameState* state, int map_type) {
     state->hasKey = 0;
     state->dialogActive = 0;
     state->currentDialogueIndex = 0;
     state->currentMapType = map_type;
-    state->enemyOccupiedTile = '.';
+    state->enemyX = -1; // Zera a posição do inimigo/NPC ao carregar mapa,
+    state->enemyY = -1; // a não ser que a fase o adicione novamente.
 
-    for (int i = 0; i < TAM; i++) {
-        for (int j = 0; j < TAM; j++) {
-            state->mapa[i][j] = '.';
+    // Limpa o mapa completamente para evitar resíduos
+    for (int i = 0; i < TAM_MAX; i++) {
+        for (int j = 0; j < TAM_MAX; j++) {
+            state->mapa[i][j] = ' ';
         }
     }
 
-    char borderChar = (state->currentMapType == 1 || state->currentMapType == 2) ? '#' : '*';
-    for (int i = 0; i < TAM; i++) {
-        state->mapa[0][i] = borderChar;
-        state->mapa[TAM - 1][i] = borderChar;
-        state->mapa[i][0] = borderChar;
-        state->mapa[i][TAM - 1] = borderChar;
-    }
-
-    int doorHouseX, doorHouseY;
-
-    if (state->currentMapType == 1) { // Fase 1
-        for (int i = 2; i < TAM - 2; i++) {
-            state->mapa[i][5] = '#';
-            state->mapa[i][10] = '#';
-            state->mapa[i][15] = '#';
-        }
-        for (int j = 2; j < TAM - 2; j++) {
-            state->mapa[5][j] = '#';
-            state->mapa[10][j] = '#';
-            state->mapa[15][j] = '#';
-        }
-        state->mapa[5][6] = '.'; state->mapa[5][7] = '.';
-        state->mapa[10][11] = '.'; state->mapa[10][12] = '.';
-        state->mapa[15][4] = '.'; state->mapa[15][3] = '.';
-
-        state->mapa[12][15] = '.';
-        state->mapa[8][15] = '.';
-        state->mapa[10][13] = '.';
-        state->mapa[5][13] = '.';
-        state->mapa[15][7] = '.';
-        state->mapa[5][7] = '.';
-
-        state->enemyX = -1;
-        state->enemyY = -1;
-
-        desenharCasaInvertida(state->mapa, 10, 2, &doorHouseX, &doorHouseY);
-
-        state->mapa[10][10] = '@'; // Chave da Fase 1
-
-        state->playerX = 1;
-        state->playerY = 1;
-
-    } else if (state->currentMapType == 2) { // Fase 2
-        state->playerX = 1; state->playerY = 1;
-        state->enemyX = TAM / 2; state->enemyY = TAM / 2; // Monstro nasce no meio
-
-        state->mapa[3][3] = '*'; state->mapa[3][4] = '*'; state->mapa[3][5] = '*';
-        state->mapa[4][3] = '*'; state->mapa[5][3] = '*';
-
-        state->mapa[8][8] = '*'; state->mapa[8][9] = '*'; state->mapa[8][10] = '*';
-        state->mapa[9][10] = '*'; state->mapa[10][10] = '*';
-
-        state->mapa[4][12] = '*'; state->mapa[4][13] = '*';
-        state->mapa[8][16] = '*'; state->mapa[8][17] = '*';
-
-        state->mapa[2][12] = '\\'; state->mapa[2][13] = '/';
-        state->mapa[3][12] = '|';  state->mapa[3][13] = '|';
-
-        state->mapa[6][16] = '\\'; state->mapa[6][17] = '/';
-        state->mapa[7][16] = '|';  state->mapa[7][17] = '|';
-
-        state->mapa[10][5] = 'D';
-        state->mapa[14][18] = '@'; // Chave da Fase 2 (não desaparece)
-
-        state->mapa[5][5] = '#';
-        state->mapa[6][5] = '#';
-        state->mapa[7][5] = '#';
-        state->mapa[10][14] = '#';
-        state->mapa[15][10] = '#';
-
-    } else { // Vila
-        for (int i = 5; i < 15; i++) {
-            state->mapa[10][i] = '*';
-        }
-
-        desenharCasa2x3(state->mapa, 3, 2);
-        desenharCasa2x3(state->mapa, 15, 4);
-        desenharCasa2x3(state->mapa, 7, 14);
-
-        desenharCasaMaior(state->mapa, 12, 11, &doorHouseX, &doorHouseY, &state->enemyX, &state->enemyY);
-
-        state->mapa[5][18] = '@';
-
-        state->playerX = 1;
-        state->playerY = 1;
+    if (state->currentMapType == 0) {
+        criarMapaVila(state);
+    } else if (state->currentMapType == 1) {
+        criarMapaFase1(state);
+    } else if (state->currentMapType == 2) {
+        criarMapaFase2(state);
     }
 }
 
 // Move o inimigo aleatoriamente (apenas na Fase 2)
 void moveEnemy(GameState* state) {
-    if (state->currentMapType != 2) return;
+    if (state->currentMapType != 2 || state->enemyX == -1 || state->enemyY == -1) return;
 
-    if (state->enemyX != -1 && state->enemyY != -1) {
-        state->mapa[state->enemyY][state->enemyX] = state->enemyOccupiedTile;
-    }
+    // Antes de mover, restaura o caractere original do tile onde o monstro estava
+    state->mapa[state->enemyY][state->enemyX] = state->enemyOccupiedTile;
 
     int dx[] = {0, 0, -1, 1};
     int dy[] = {-1, 1, 0, 0};
@@ -224,12 +335,13 @@ void moveEnemy(GameState* state) {
     int nx = state->enemyX + dx[direcao];
     int ny = state->enemyY + dy[direcao];
 
-    if (nx >= 0 && nx < TAM && ny >= 0 && ny < TAM && state->mapa[ny][nx] != '*' && state->mapa[ny][nx] != '#') {
+    if (nx > 0 && nx < state->current_tam - 1 && ny > 0 && ny < state->current_tam - 1 &&
+        state->mapa[ny][nx] != '*' && state->mapa[ny][nx] != '#') { // Monstro não entra em paredes nem espinhos
+        
         if (nx != state->playerX || ny != state->playerY) {
-            state->enemyOccupiedTile = state->mapa[ny][nx];
+            state->enemyOccupiedTile = state->mapa[ny][nx]; // Salva o novo tile ocupado
             state->enemyX = nx;
             state->enemyY = ny;
-            state->mapa[state->enemyY][state->enemyX] = 'X';
         }
     }
 }
@@ -254,42 +366,46 @@ void play() {
     while (1) {
         desenharMapa(&state);
         
+        // Desenha o player
         moverCursor(state.playerX, state.playerY);
         printf("&");
 
-        if (state.currentMapType == 0 && (state.playerX != state.enemyX || state.playerY != state.enemyY)) {
+        // Desenha NPC ou Monstro
+        if (state.currentMapType == 0 && state.enemyX != -1 && (state.playerX != state.enemyX || state.playerY != state.enemyY)) {
             moverCursor(state.enemyX, state.enemyY);
-            printf("P");
+            printf("P"); // NPC na Vila
+        } else if (state.currentMapType == 2 && state.enemyX != -1 && (state.playerX != state.enemyX || state.playerY != state.enemyY)) {
+            moverCursor(state.enemyX, state.enemyY);
+            printf("X"); // Monstro na Fase 2
         }
         
-        if (state.currentMapType == 2 && (state.playerX != state.enemyX || state.playerY != state.enemyY)) {
-            moverCursor(state.enemyX, state.enemyY);
-            printf("X");
-        }
-
+        // Limpa a linha de mensagem anterior
         char emptyLine[TAM_FALA * 2 + 1];
         memset(emptyLine, ' ', sizeof(emptyLine) - 1);
         emptyLine[sizeof(emptyLine) - 1] = '\0';
 
-        moverCursor(0, TAM + 1);
+        moverCursor(0, state.current_tam + 1);
         printf("%s", emptyLine);
 
+        // Exibe diálogo do NPC
         if (state.dialogActive) {
-            moverCursor(0, TAM + 1);
+            moverCursor(0, state.current_tam + 1);
             printf("NPC: %s", state.npcDialogues[state.currentDialogueIndex]);
         }
 
         keyPress = _getch();
 
+        // Limpa a posição anterior do player (substitui pelo caractere do mapa)
         moverCursor(state.playerX, state.playerY);
+        // Se o player estava em cima do NPC/Monstro, desenha ele no lugar
         if (state.currentMapType == 0 && state.playerX == state.enemyX && state.playerY == state.enemyY && !state.dialogActive) {
             printf("P ");
         } else if (state.currentMapType == 2 && state.playerX == state.enemyX && state.playerY == state.enemyY) {
             printf("X ");
-        }
-        else {
+        } else {
             printf("%c ", state.mapa[state.playerY][state.playerX]);
         }
+
 
         if (keyPress == 'q' || keyPress == 'Q') break;
 
@@ -305,27 +421,31 @@ void play() {
 
                 if (currentItem == '@') {
                     state.hasKey = 1;
-                    if (state.currentMapType != 2) {
+                    if (state.currentMapType != 2) { // A chave da Fase 2 não desaparece
                         state.mapa[state.playerY][state.playerX] = '.';
                     }
-
-                    for (int i = 0; i < TAM; i++) {
-                        for (int j = 0; j < TAM; j++) {
-                            if (state.mapa[i][j] == 'D') {
-                                state.mapa[i][j] = '=';
-                            }
-                        }
-                    }
-                } else if (state.playerX == state.enemyX && state.playerY == state.enemyY && state.currentMapType == 0) {
+                    atualizarPortas(state.mapa, state.current_tam);
+                } else if (state.currentMapType == 0 && state.playerX == state.enemyX && state.playerY == state.enemyY) {
+                    // Interação com NPC
                     state.dialogActive = 1;
                     state.currentDialogueIndex = 0;
-                } else if (currentItem == '=') {
-                    if (state.currentMapType == 0) {
-                        loadMap(&state, 1);
-                    } else if (state.currentMapType == 1) {
-                        loadMap(&state, 2);
-                    } else if (state.currentMapType == 2) {
-                        loadMap(&state, 0);
+                } else if (currentItem == 'D' || currentItem == '=') { // Interagiu com uma porta
+                    if (state.hasKey) { // Só transita se tiver a chave
+                        if (state.currentMapType == 0) { // Vila para Fase 1
+                            loadMap(&state, 1);
+                        } else if (state.currentMapType == 1) { // Fase 1 para Fase 2
+                            loadMap(&state, 2);
+                        } else if (state.currentMapType == 2) { // Fase 2 para Sair (sucesso)
+                            system("cls");
+                            printf("\n\nVoce escapou da Dungeon!\n");
+                            printf("Pressione qualquer tecla para voltar ao menu...\n");
+                            _getch();
+                            return;
+                        }
+                    } else {
+                        moverCursor(0, state.current_tam + 2);
+                        printf("A porta esta trancada! Voce precisa da chave.");
+                        Sleep(1500);
                     }
                 }
             }
@@ -337,15 +457,14 @@ void play() {
         if (keyPress == 'a') newX--;
         if (keyPress == 'd') newX++;
 
-        if (newX >= 0 && newX < TAM && newY >= 0 && newY < TAM) {
-            if (!state.dialogActive && (keyPress == 'w' || keyPress == 's' || keyPress == 'a' || keyPress == 'd')) {
-                if (podeMover(&state, newX, newY)) {
-                    state.playerX = newX;
-                    state.playerY = newY;
-                }
+        if (!state.dialogActive && (keyPress == 'w' || keyPress == 's' || keyPress == 'a' || keyPress == 'd')) {
+            if (podeMover(&state, newX, newY)) {
+                state.playerX = newX;
+                state.playerY = newY;
             }
         }
 
+        // Verifica colisão com espinhos após mover
         if (state.mapa[state.playerY][state.playerX] == '#') {
             state.lives--;
             if (state.lives <= 0) {
@@ -355,28 +474,30 @@ void play() {
                 _getch();
                 return;
             } else {
-                moverCursor(0, TAM + 2);
+                moverCursor(0, state.current_tam + 2);
                 printf("Voce pisou nos espinhos e perdeu uma vida! Vidas restantes: %d", state.lives);
                 Sleep(1500);
-                state.playerX = 1; state.playerY = 1;
+                state.playerX = 1; state.playerY = 1; 
             }
         }
 
-        moveEnemy(&state);
-
-        if (state.currentMapType == 2 && state.playerX == state.enemyX && state.playerY == state.enemyY) {
-            state.lives--;
-            if (state.lives <= 0) {
-                system("cls");
-                printf("\n\nVoce foi pego pelo inimigo e morreu!\n");
-                printf("Fim de jogo. Pressione qualquer tecla para voltar ao menu...\n");
-                _getch();
-                return;
-            } else {
-                moverCursor(0, TAM + 2);
-                printf("Voce foi pego pelo inimigo e perdeu uma vida! Vidas restantes: %d", state.lives);
-                Sleep(1500);
-                loadMap(&state, state.currentMapType);
+        // Movimento do inimigo e colisão (apenas na Fase 2)
+        if (state.currentMapType == 2) {
+            moveEnemy(&state); // Move o monstro e atualiza enemyOccupiedTile
+            if (state.playerX == state.enemyX && state.playerY == state.enemyY) {
+                state.lives--;
+                if (state.lives <= 0) {
+                    system("cls");
+                    printf("\n\nVoce foi pego pelo inimigo e morreu!\n");
+                    printf("Fim de jogo. Pressione qualquer tecla para voltar ao menu...\n");
+                    _getch();
+                    return;
+                } else {
+                    moverCursor(0, state.current_tam + 2);
+                    printf("Voce foi pego pelo inimigo e perdeu uma vida! Vidas restantes: %d", state.lives);
+                    Sleep(1500);
+                    loadMap(&state, state.currentMapType); // Recarrega o mapa para resetar posições
+                }
             }
         }
         
