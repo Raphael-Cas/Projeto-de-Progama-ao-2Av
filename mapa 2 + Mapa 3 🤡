@@ -4,22 +4,22 @@
 #include <windows.h>
 #include <time.h>
 
-#define TAM 20
-#define NUM_PAREDES 40
+#define TAM1 20
+#define TAM2 40
 #define VIDAS_INICIAIS 3
 
 int mapaAtual = 1;
 
-// Função para limpar a tela
+// Limpa a tela
 void limparTela() {
     system("cls");
 }
 
-// Desenha o mapa na tela
-void desenharMapa(char mapa[TAM][TAM], int vidas, int temChave) {
+// Desenha o mapa
+void desenharMapa(char **mapa, int tam, int vidas, int temChave) {
     limparTela();
-    for (int i = 0; i < TAM; i++) {
-        for (int j = 0; j < TAM; j++) {
+    for (int i = 0; i < tam; i++) {
+        for (int j = 0; j < tam; j++) {
             printf("%c ", mapa[i][j]);
         }
         printf("\n");
@@ -28,74 +28,75 @@ void desenharMapa(char mapa[TAM][TAM], int vidas, int temChave) {
     printf("Chave: %s | Vidas: %d\n", temChave ? "SIM" : "NAO", vidas);
 }
 
-// Inicializa o mapa 1
-void inicializarMapa1(char mapa[TAM][TAM], int *px, int *py, int *vx, int *vy) {
-    for (int i = 0; i < TAM; i++)
-        for (int j = 0; j < TAM; j++)
+// Cria um mapa dinâmico
+char **criarMapa(int tam) {
+    char **mapa = (char **)malloc(tam * sizeof(char *));
+    for (int i = 0; i < tam; i++) {
+        mapa[i] = (char *)malloc(tam * sizeof(char));
+    }
+    return mapa;
+}
+
+// Libera memória do mapa
+void liberarMapa(char **mapa, int tam) {
+    for (int i = 0; i < tam; i++) {
+        free(mapa[i]);
+    }
+    free(mapa);
+}
+
+// Inicializa o mapa com tamanho e elementos
+void inicializarMapa(char **mapa, int tam, int *px, int *py, int *vx, int *vy) {
+    for (int i = 0; i < tam; i++)
+        for (int j = 0; j < tam; j++)
             mapa[i][j] = '.';
 
     // Bordas
-    for (int i = 0; i < TAM; i++) {
+    for (int i = 0; i < tam; i++) {
         mapa[0][i] = '*';
-        mapa[TAM - 1][i] = '*';
+        mapa[tam - 1][i] = '*';
         mapa[i][0] = '*';
-        mapa[i][TAM - 1] = '*';
+        mapa[i][tam - 1] = '*';
     }
 
     srand(time(NULL));
+    int num_paredes = (tam == TAM1) ? 40 : 150;
+
+    // Espinhos
     int paredes = 0;
-    while (paredes < NUM_PAREDES) {
-        int x = rand() % (TAM - 2) + 1;
-        int y = rand() % (TAM - 2) + 1;
+    while (paredes < num_paredes) {
+        int x = rand() % (tam - 2) + 1;
+        int y = rand() % (tam - 2) + 1;
         if (mapa[y][x] == '.') {
-            mapa[y][x] = '#';  // Espinhos
+            mapa[y][x] = '#';
             paredes++;
         }
     }
 
-    // Objetos importantes
-    mapa[10][10] = '@'; // Chave
-    mapa[15][15] = 'D'; // Porta
-    mapa[5][5] = '>';   // Teleporte de ida
-    mapa[10][5] = '<';  // Teleporte de volta
-
-    *px = 1;
-    *py = 1;
-    mapa[*py][*px] = '&'; // Jogador
-
-    *vx = TAM - 2;
-    *vy = TAM - 2;
-    mapa[*vy][*vx] = 'V'; // Vilão
-}
-
-// Inicializa o mapa 2 (mais simples)
-void inicializarMapa2(char mapa[TAM][TAM], int *px, int *py, int *vx, int *vy) {
-    for (int i = 0; i < TAM; i++)
-        for (int j = 0; j < TAM; j++)
-            mapa[i][j] = '.';
-
-    for (int i = 0; i < TAM; i++) {
-        mapa[0][i] = '*';
-        mapa[TAM - 1][i] = '*';
-        mapa[i][0] = '*';
-        mapa[i][TAM - 1] = '*';
+    // Objetos
+    if (tam == TAM1) {
+        mapa[10][10] = '@'; // Chave
+        mapa[15][15] = 'D'; // Porta
+        mapa[5][5] = '>';   // Teleporte
+        mapa[10][5] = '<';  // Teleporte volta
+    } else {
+        mapa[20][20] = '@';
+        mapa[35][35] = 'D';
+        mapa[10][10] = '>';
+        mapa[30][5] = '<';
     }
-
-    // Obstáculos e porta
-    mapa[10][10] = '#';
-    mapa[15][15] = 'D';
 
     *px = 1;
     *py = 1;
     mapa[*py][*px] = '&';
 
-    *vx = TAM - 2;
-    *vy = TAM - 2;
+    *vx = tam - 2;
+    *vy = tam - 2;
     mapa[*vy][*vx] = 'V';
 }
 
-// Movimenta o inimigo em direção ao jogador
-void moverInimigo(char mapa[TAM][TAM], int *vx, int *vy, int px, int py) {
+// Movimento do vilão
+void moverInimigo(char **mapa, int tam, int *vx, int *vy, int px, int py) {
     int dx = (px > *vx) ? 1 : (px < *vx) ? -1 : 0;
     int dy = (py > *vy) ? 1 : (py < *vy) ? -1 : 0;
 
@@ -112,18 +113,19 @@ void moverInimigo(char mapa[TAM][TAM], int *vx, int *vy, int px, int py) {
 
 // Função principal do jogo
 void jogar() {
-    char mapa[TAM][TAM];
+    int tam = TAM1;
+    char **mapa = criarMapa(tam);
     int px, py, vx, vy;
     int temChave = 0;
     int vidas = VIDAS_INICIAIS;
     char tecla;
 
-    inicializarMapa1(mapa, &px, &py, &vx, &vy);
+    inicializarMapa(mapa, tam, &px, &py, &vx, &vy);
 
     while (1) {
-        desenharMapa(mapa, vidas, temChave);
+        desenharMapa(mapa, tam, vidas, temChave);
 
-        // Verifica colisão com inimigo
+        // Colisão com vilão
         if (px == vx && py == vy) {
             vidas--;
             if (vidas <= 0) {
@@ -148,7 +150,6 @@ void jogar() {
         if (tecla == 'a' || tecla == 'A') nx--;
         if (tecla == 'd' || tecla == 'D') nx++;
 
-        // Verifica se pode andar (não anda em parede '*')
         if (mapa[ny][nx] != '*' && mapa[ny][nx] != 'V') {
             mapa[py][px] = '.';
             px = nx;
@@ -178,14 +179,20 @@ void jogar() {
 
         // Teleporte
         if (mapa[py][px] == '>') {
-            px = 10;
-            py = 5;
+            if (tam == TAM1) {
+                px = 10; py = 5;
+            } else {
+                px = 30; py = 5;
+            }
             printf("Teleportado!\n");
             Sleep(1000);
         }
         if (mapa[py][px] == '<') {
-            px = 5;
-            py = 5;
+            if (tam == TAM1) {
+                px = 5; py = 5;
+            } else {
+                px = 10; py = 10;
+            }
             printf("Teleportado de volta!\n");
             Sleep(1000);
         }
@@ -195,8 +202,11 @@ void jogar() {
             if (temChave && mapaAtual == 1) {
                 printf("Você abriu a porta para o próximo mapa!\n");
                 Sleep(1500);
+                liberarMapa(mapa, tam);
+                tam = TAM2;
+                mapa = criarMapa(tam);
                 mapaAtual = 2;
-                inicializarMapa2(mapa, &px, &py, &vx, &vy);
+                inicializarMapa(mapa, tam, &px, &py, &vx, &vy);
                 continue;
             } else if (mapaAtual == 2) {
                 printf("Parabéns! Você venceu o jogo!\n");
@@ -209,9 +219,11 @@ void jogar() {
         }
 
         mapa[py][px] = '&';
-        moverInimigo(mapa, &vx, &vy, px, py);
+        moverInimigo(mapa, tam, &vx, &vy, px, py);
         Sleep(100);
     }
+
+    liberarMapa(mapa, tam);
 }
 
 // Tela de créditos
