@@ -1,28 +1,26 @@
+
 #include <stdio.h>
-#include <stdlib.h> // Para usar rand() e srand()
-#include <conio.h>    // For _getch()
-#include <windows.h>  // For COORD, SetConsoleCursorPosition, Sleep, system("cls")
-#include <string.h>   // Para usar strcpy e memset
-#include <locale.h>   // para textos com caracteres especiais
-#include <time.h>     // Para usar time() na seed do rand()
+#include <stdlib.h> 
+#include <conio.h>   
+#include <windows.h>  
+#include <string.h>  
+#include <locale.h>   
+#include <time.h>     
 
 #define TAM 20
 #define MAX_FALAS 7
 #define TAM_FALA 200
 
-// --- Variáveis Globais (necessárias para o jogo e diálogo) ---
+
 int temChave = 0;
-int npcX = 0, npcY = 0; // Posição do NPC
+int npcX = 0, npcY = 0; 
 int dialogoAtivo = 0;
 int indiceFalaAtual = 0;
 char falasNPC[MAX_FALAS][TAM_FALA];
-int mapaAtualTipo = 0; // 0: Vila, 1: Fase 1 (para diferenciar comportamentos)
+int mapaAtualTipo = 0; 
 
-// Variável para controlar a seed do gerador de números aleatórios
 unsigned int currentSeed = 0;
-// --- Fim Variáveis Globais ---
 
-// --- Funções de Utilitário (para o jogo) ---
 void moverCursor(int x, int y) {
     COORD pos = { x * 2, y };
     SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), pos);
@@ -37,15 +35,14 @@ void desenharMapa(char mapa[TAM][TAM]) {
     }
 }
 
-// Adaptação de podeMover para os diferentes tipos de mapa
+
 int podeMover(char mapa[TAM][TAM], int x, int y) {
-    // Não pode mover através de paredes normais ('*') ou espinhos ('#')
+  
     if (mapa[y][x] == '*' || mapa[y][x] == '#') return 0;
     
-    // Se for uma porta fechada ('D'), não pode passar
     if (mapa[y][x] == 'D') return 0;
     
-    return 1; // Pode mover
+    return 1; 
 }
 
 void desenharCasa2x3(char mapa[TAM][TAM], int startX, int startY) {
@@ -58,7 +55,6 @@ void desenharCasa2x3(char mapa[TAM][TAM], int startX, int startY) {
     mapa[startY + 2][startX + 1] = '*';
 }
 
-// Função para desenhar a casa grande normal (da Vila)
 void desenharCasaMaior(char mapa[TAM][TAM], int startX, int startY, int* portaX, int* portaY) {
     if (startX + 2 >= TAM || startY + 3 >= TAM) return;
     mapa[startY][startX + 1] = '*';
@@ -69,65 +65,60 @@ void desenharCasaMaior(char mapa[TAM][TAM], int startX, int startY, int* portaX,
     mapa[startY + 2][startX + 1] = '*';
     mapa[startY + 2][startX + 2] = '*';
     mapa[startY + 3][startX] = '*';
-    mapa[startY + 3][startX + 1] = 'D'; // Porta
+    mapa[startY + 3][startX + 1] = 'D'; 
     mapa[startY + 3][startX + 2] = '*';
 
     if (portaX != NULL) *portaX = startX + 1;
     if (portaY != NULL) *portaY = startY + 3;
     
-    // Posiciona o NPC para a Vila (se estiver no mapa da Vila)
-    if (mapaAtualTipo == 0) { // NPC só na Vila
+   
+    if (mapaAtualTipo == 0) { 
         npcX = startX - 2;
         npcY = startY + 3;
         if (npcX >= 0 && npcY >= 0 && npcX < TAM && npcY < TAM) {
-            mapa[npcY][npcX] = 'P'; // 'P' para NPC
+            mapa[npcY][npcX] = 'P'; 
         }
     }
 }
 
-// Função para desenhar a casa invertida (da Fase 1)
+
 void desenharCasaInvertida(char mapa[TAM][TAM], int startX, int startY, int* portaX, int* portaY) {
     if (startX + 2 >= TAM || startY + 3 >= TAM) return;
     
-    // Base da casa
+ 
     mapa[startY][startX] = '#';
-    mapa[startY][startX + 1] = 'D'; // Porta (na Fase 1)
+    mapa[startY][startX + 1] = 'D'; 
     mapa[startY][startX + 2] = '#';
 
-    // Paredes
+   
     mapa[startY + 1][startX] = '#';
     mapa[startY + 1][startX + 1] = '#';
     mapa[startY + 1][startX + 2] = '#';
 
-    // Telhado invertido
+   
     mapa[startY + 2][startX] = '\\';
     mapa[startY + 2][startX + 1] = '|';
     mapa[startY + 2][startX + 2] = '/';
-    mapa[startY + 3][startX + 1] = '#'; // Ponta do telhado
+    mapa[startY + 3][startX + 1] = '#'; 
 
     if (portaX != NULL) *portaX = startX + 1;
-    if (portaY != NULL) *portaY = startY; // A porta está na linha superior
+    if (portaY != NULL) *portaY = startY; 
 }
 
-// Função para Carregar um Novo Mapa (Vila ou Fase 1)
-// O parâmetro 'map_type' decide qual tipo de mapa carregar (0 para Vila, 1 para Fase 1)
+
+
 void carregarMapa(char mapa[TAM][TAM], int* playerX, int* playerY, int map_type) {
-    // Reseta o estado do jogo para o novo mapa
+    
     temChave = 0;
     dialogoAtivo = 0;
     indiceFalaAtual = 0;
-    mapaAtualTipo = map_type; // Define o tipo de mapa atual
+    mapaAtualTipo = map_type; 
 
-    // Não precisa de srand(time(NULL) + currentSeed) se a geração é fixa
-    // currentSeed++; 
-
-    // Inicializa o mapa com "chão"
-    for (int i = 0; i < TAM; i++)
+      for (int i = 0; i < TAM; i++)
         for (int j = 0; j < TAM; j++)
             mapa[i][j] = '.';
 
-    // Adiciona bordas (espinho '#' ou parede '*')
-    char borderChar = (mapaAtualTipo == 1) ? '#' : '*'; // Se for Fase 1, bordas de espinhos, senão paredes
+    char borderChar = (mapaAtualTipo == 1) ? '#' : '*'; 
     for (int i = 0; i < TAM; i++) {
         mapa[0][i] = borderChar;
         mapa[TAM - 1][i] = borderChar;
@@ -135,10 +126,10 @@ void carregarMapa(char mapa[TAM][TAM], int* playerX, int* playerY, int map_type)
         mapa[i][TAM - 1] = borderChar;
     }
 
-    int portaCasaGrandeX, portaCasaGrandeY; // Para armazenar a posição da porta
+    int portaCasaGrandeX, portaCasaGrandeY; 
 
-    if (mapaAtualTipo == 1) { // Fase 1 (Mapa Invertido / Labirinto de Espinhos)
-        // Paredes internas de espinhos (FIXAS)
+    if (mapaAtualTipo == 1) { 
+       
         for (int i = 2; i < TAM - 2; i++) {
             mapa[i][5] = '#';
             mapa[i][10] = '#';
@@ -149,58 +140,55 @@ void carregarMapa(char mapa[TAM][TAM], int* playerX, int* playerY, int map_type)
             mapa[10][j] = '#';
             mapa[15][j] = '#';
         }
-        // Abrir alguns caminhos fixos no labirinto
+       
         mapa[5][6] = '.'; mapa[5][7] = '.';
         mapa[10][11] = '.'; mapa[10][12] = '.';
         mapa[15][4] = '.'; mapa[15][3] = '.';
 
-        // Remover espinhos nos pontos especificados (y, x)
-        mapa[12][15] = '.'; // (15, 12) -> (y=12, x=15)
-        mapa[8][15] = '.';  // (15, 8) -> (y=8, x=15)
-        mapa[10][13] = '.'; // (13, 10) -> (y=10, x=13)
-        mapa[5][13] = '.';  // (13, 5) -> (y=5, x=13)
-        mapa[15][7] = '.';  // (7, 15) -> (y=15, x=7)
-        mapa[5][7] = '.';   // (7, 5) -> (y=5, x=7)
+        
+        mapa[12][15] = '.'; 
+        mapa[8][15] = '.';  
+        mapa[10][13] = '.'; 
+        mapa[5][13] = '.';
+        mapa[15][7] = '.';  
+        mapa[5][7] = '.';   
 
-        // Garante que o NPC não esteja na Fase 1
+        
         npcX = -1; 
         npcY = -1;
 
-        // Desenha a casa invertida em posição FIXA
+       
         desenharCasaInvertida(mapa, 10, 2, &portaCasaGrandeX, &portaCasaGrandeY);
 
-        // A chave em posição FIXA na Fase 1
+       
         mapa[18][18] = '@';
 
-        // O jogador sempre reaparece em uma posição segura e FIXA na Fase 1
-        // Se a referência é (19,19) para o nascimento, que é a borda, o jogador pode precisar de uma posição interna.
-        // Vou usar (1,1) como padrão seguro. Se precisar de (19,19) mesmo, lembre-se que é uma borda.
         *playerX = 1;
         *playerY = 1;
 
-    } else { // Vila (Mapa Normal)
-        // Paredes internas fixas da Vila
+    } else { 
+
         for (int i = 5; i < 15; i++) {
             mapa[10][i] = '*';
         }
 
-        // Adiciona três casas 2x3 (posições fixas na Vila)
-        desenharCasa2x3(mapa, 3, 2);  // Casa 1
-        desenharCasa2x3(mapa, 15, 4); // Casa 2
-        desenharCasa2x3(mapa, 7, 14); // Casa 3
+        
+        desenharCasa2x3(mapa, 3, 2);  
+        desenharCasa2x3(mapa, 15, 4); 
+        desenharCasa2x3(mapa, 7, 14); 
 
-        // Adiciona a casa maior com porta e define a posição do NPC
+       
         desenharCasaMaior(mapa, 12, 11, &portaCasaGrandeX, &portaCasaGrandeY);
 
-        // Adiciona a chave na Vila (posição fixa)
+       
         mapa[5][18] = '@';
 
-        // Posiciona o jogador no início da vila
+        
         *playerX = 1;
         *playerY = 1;
     }
     
-    system("cls"); // Limpa a tela para o novo mapa
+    system("cls"); 
     desenharMapa(mapa);
 }
 
@@ -218,30 +206,30 @@ void play() {
     strcpy(falasNPC[5], "Uma das pessoas que foram lá achou essa chave que deve abrir alguma coisa.");
     strcpy(falasNPC[6], "Boa sorte!!!!");
 
-    // Carrega o mapa inicial (a Vila)
-    carregarMapa(mapa, &x, &y, 0); // 0 significa "Vila"
+    
+    carregarMapa(mapa, &x, &y, 0); 
 
     char tecla;
 
     while (1) {
         moverCursor(x, y);
-        printf("&"); // Símbolo do jogador
+        printf("&"); // 
 
-        // --- Limpa a linha de mensagem e de diálogo a cada frame de forma robusta ---
-        char linhaVazia[TAM_FALA * 2 + 1]; // Buffer para limpar a linha. *2 por conta do espaço após cada caractere.
-        memset(linhaVazia, ' ', sizeof(linhaVazia) - 1); // Preenche com espaços
-        linhaVazia[sizeof(linhaVazia) - 1] = '\0'; // Adiciona terminador nulo
+        
+        char linhaVazia[TAM_FALA * 2 + 1]; 
+        memset(linhaVazia, ' ', sizeof(linhaVazia) - 1);
+        linhaVazia[sizeof(linhaVazia) - 1] = '\0'; 
 
         moverCursor(0, TAM);
-        printf("%s", linhaVazia); // Limpa a linha da mensagem principal
-        moverCursor(0, TAM + 1); // Linha abaixo da mensagem principal para o diálogo
-        printf("%s", linhaVazia); // Limpa a linha do diálogo
-        // --- Fim da limpeza robusta ---
+        printf("%s", linhaVazia); 
+        moverCursor(0, TAM + 1); 
+        printf("%s", linhaVazia); 
+       
 
         moverCursor(0, TAM);
         printf("Use W A S D para mover, Q para sair. Pressione 'I' para interagir. Chave: %s", temChave ? "SIM" : "NAO");
 
-        // Se o diálogo está ativo, exibe a fala atual do NPC
+       
         if (dialogoAtivo) {
             moverCursor(0, TAM + 1);
             printf("NPC: %s", falasNPC[indiceFalaAtual]);
@@ -249,86 +237,86 @@ void play() {
 
         tecla = _getch();
 
-        // Apaga o jogador da posição atual
+       
         moverCursor(x, y);
-        // Só tenta imprimir o NPC se ele existir neste mapa (ou seja, se for a Vila)
+        
         if (mapaAtualTipo == 0 && x == npcX && y == npcY && !dialogoAtivo) {
-             printf("P "); // Imprime "P " para manter o espaço
+             printf("P "); 
         } else {
-            printf("%c ", mapa[y][x]); // Imprime o caractere do mapa e um espaço
+            printf("%c ", mapa[y][x]); 
         }
         
-        // Lógica de sair do jogo (volta para o menu)
+      
         if (tecla == 'q' || tecla == 'Q') break;
 
-        // --- Lógica de Interação ---
+        
         if (tecla == 'i' || tecla == 'I') {
-            // Se o diálogo com o NPC está ativo
+            
             if (dialogoAtivo) {
                 indiceFalaAtual++;
                 if (indiceFalaAtual >= MAX_FALAS) {
-                    dialogoAtivo = 0; // Termina o diálogo
-                    indiceFalaAtual = 0; // Reseta para a próxima vez
-                    // Limpa a linha do diálogo ao encerrar
+                    dialogoAtivo = 0;
+                    indiceFalaAtual = 0; 
+                    
                     moverCursor(0, TAM + 1);
                     printf("%s", linhaVazia);
                 }
-            } else { // Se o diálogo não está ativo, verifica interações normais
-                char itemAtual = mapa[y][x]; // Pega o item na posição atual do jogador
+            } else { 
+                char itemAtual = mapa[y][x]; 
 
-                if (itemAtual == '@') { // Jogador interage com a chave
+                if (itemAtual == '@') { 
                     temChave = 1;
-                    mapa[y][x] = '.'; // Remove a chave do mapa
+                    mapa[y][x] = '.'; 
 
-                    // Desbloqueia todas as portas 'D' para '=' APENAS no mapa atual
+                    
                     for (int i = 0; i < TAM; i++) {
                         for (int j = 0; j < TAM; j++) {
                             if (mapa[i][j] == 'D') {
-                                mapa[i][j] = '='; // Muda a porta para aberta
+                                mapa[i][j] = '='; 
                             }
                         }
                     }
                     
-                    // Redesenha o mapa para mostrar as portas abertas imediatamente
+                    
                     system("cls");
                     desenharMapa(mapa);
                 } 
-                // Interage com o NPC (só na Vila)
+                
                 else if (x == npcX && y == npcY && mapaAtualTipo == 0) {
-                    dialogoAtivo = 1; // Inicia o diálogo
-                    indiceFalaAtual = 0; // Começa da primeira fala
+                    dialogoAtivo = 1; 
+                    indiceFalaAtual = 0; 
                 }
-                // Interação com Porta Aberta
+                
                 else if (itemAtual == '=') {
-                    if (mapaAtualTipo == 0) { // Se está na Vila, vai para a Fase 1
-                        carregarMapa(mapa, &x, &y, 1); // 1 significa "Fase 1"
-                    } else { // Se está na Fase 1, volta para a Vila
-                        carregarMapa(mapa, &x, &y, 0); // 0 significa "Vila"
+                    if (mapaAtualTipo == 0) { 
+                        carregarMapa(mapa, &x, &y, 1); 
+                    } else { 
+                        carregarMapa(mapa, &x, &y, 0); 
                     }
                 }
             }
         }
         // --- Fim da Lógica de Interação ---
 
-        // Calcula nova posição (movimento)
+       
         int novoX = x, novoY = y;
         if (tecla == 'w') novoY--;
         if (tecla == 's') novoY++;
         if (tecla == 'a') novoX--;
         if (tecla == 'd') novoX++;
 
-        // Verifica se pode mover
+       
         if (novoX >= 0 && novoX < TAM && novoY >= 0 && novoY < TAM) {
-            // Verifica se o próximo tile é espinhos ANTES de mover
+           
             if (mapa[novoY][novoX] == '#') {
                 system("cls");
                 printf("\n\nVoce tocou nos espinhos e morreu!\n");
                 printf("Fim de jogo. Pressione qualquer tecla para voltar ao menu...\n");
-                _getch(); // Espera por uma tecla
-                return; // Retorna para o menu principal
+                _getch(); 
+                return; 
             }
 
-            // Se o diálogo está ativo, o jogador não se move com W,A,S,D. Apenas 'I' funciona.
+           
             if (!dialogoAtivo) {
                 if (podeMover(mapa, novoX, novoY)) {
                     x = novoX;
@@ -337,10 +325,10 @@ void play() {
             }
         }
 
-        Sleep(30); // Pequeno delay para suavizar
+        Sleep(30); 
     }
 
-    system("cls"); // Limpa a tela ao sair do jogo
+    system("cls");
 }
 
 // --- Função de Créditos ---
@@ -351,14 +339,14 @@ void credits() {
     printf("Musica: Nenhuma\n");
     printf("Agradecimentos: A comunidade C\n");
     printf("\nPressione qualquer tecla para voltar ao menu...\n");
-    _getch(); // Espera por uma tecla
+    _getch(); 
     system("cls");
 }
 
 
 // --- Função Principal (Menu) ---
 int main() {
-    setlocale(LC_ALL, "portuguese"); // Configura a localização para caracteres especiais
+    setlocale(LC_ALL, "portuguese"); 
 
     int escolha;
     
@@ -370,18 +358,17 @@ int main() {
         printf("3. Sair\n");
         printf("Escolha uma opcao: ");
         
-        // Garante que a entrada do scanf seja tratada corretamente
-        // e que não haja caracteres residuais no buffer de entrada.
+       
         while (scanf("%d", &escolha) != 1) { 
             printf("Entrada invalida! Por favor, digite um numero: ");
-            while (getchar() != '\n'); // Limpa o buffer de entrada
+            while (getchar() != '\n'); 
         }
-        while (getchar() != '\n'); // Limpa o buffer de entrada apos a leitura bem-sucedida
+        while (getchar() != '\n'); 
 
         switch (escolha) {
-            case 1: play(); break; // Chama a função que contém o jogo
-            case 2: credits(); break; // Chama a função de créditos
-            case 3: printf("Saindo do Jogo...\n"); return 0; // Sai do programa
+            case 1: play(); break; 
+            case 2: credits(); break;
+            case 3: printf("Saindo do Jogo...\n"); return 0; 
             default: printf("Opcao invalida!\n");
         }
     }
