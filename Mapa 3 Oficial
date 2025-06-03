@@ -288,7 +288,7 @@ void creditos() {
     limparTela();
     printf("=== Créditos ===\n");
     printf("Desenvolvedores: Andre Bispo e Raphael Castro\n");
-    printf("Agradecimentos: Gepeto, GitHub Copilot\n");
+    printf("Agradecimentos: Gepeto, GitHub Copilot e ChatGPT\n");
     printf("\nPressione qualquer tecla para voltar ao menu...\n");
     _getch();
 }
