@@ -333,9 +333,8 @@ void play() {
 void credits() {
     system("cls");
     printf("\n=== Creditos ===\n");
-    printf("Desenvolvedor: Seu Nome/Equipe\n");
-    printf("Musica: Nenhuma\n");
-    printf("Agradecimentos: A comunidade C\n");
+    printf("Desenvolvedores: Andre Bispo e Raphael Castro\n");
+    printf("Agradecimentos: Ao professor Girotto C\n");
     printf("\nPressione qualquer tecla para voltar ao menu...\n");
     _getch(); 
     system("cls");
