@@ -1,0 +1,322 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <conio.h>
+#include <windows.h>
+#include <time.h>
+
+#define TAM2 40
+#define VIDAS_INICIAIS 3
+
+int mapaAtual = 2;
+char player_tile_underneath = '.';
+
+void limparTela() {
+    system("cls");
+}
+
+void desenharMapa(char **mapa, int tam, int vidas, int temChave) {
+    limparTela();
+    for (int i = 0; i < tam; i++) {
+        for (int j = 0; j < tam; j++) {
+            printf("%c ", mapa[i][j]);
+        }
+        printf("\n");
+    }
+    printf("\nUse W A S D para mover, Q para sair. Pressione 'I' para interagir.\n");
+    printf("Chave: %s | Vidas: %d\n", temChave ? "SIM" : "NAO", vidas);
+}
+
+char **criarMapa(int tam) {
+    char **mapa = (char **)malloc(tam * sizeof(char *));
+    for (int i = 0; i < tam; i++) {
+        mapa[i] = (char *)malloc(tam * sizeof(char));
+    }
+    return mapa;
+}
+
+void liberarMapa(char **mapa, int tam) {
+    for (int i = 0; i < tam; i++) {
+        free(mapa[i]);
+    }
+    free(mapa);
+}
+
+void inicializarMapa(char **mapa, int tam, int *px, int *py, int *vx, int *vy) {
+    for (int i = 0; i < tam; i++)
+        for (int j = 0; j < tam; j++)
+            mapa[i][j] = '.';
+
+    for (int i = 0; i < tam; i++) {
+        mapa[0][i] = '*';
+        mapa[tam - 1][i] = '*';
+        mapa[i][0] = '*';
+        mapa[i][tam - 1] = '*';
+    }
+
+    srand(time(NULL));
+    int num_paredes = (tam == TAM2) ? 80 : 300; // Espinhos dobrados
+
+    *px = 1;
+    *py = 1;
+    *vx = tam - 2;
+    *vy = tam - 2;
+
+    if (tam == TAM2) {
+        mapa[10][10] = '@';
+        mapa[15][15] = 'D';
+        mapa[5][5] = '>';
+        mapa[10][5] = '<';
+
+        // Paredes fixas extras
+        mapa[7][7] = '*';
+        mapa[7][8] = '*';
+        mapa[8][7] = '*';
+        mapa[8][8] = '*';
+        mapa[12][12] = '*';
+        mapa[13][12] = '*';
+        mapa[12][13] = '*';
+
+    } else {
+        mapa[20][20] = '@';
+        mapa[35][35] = 'D';
+        mapa[10][10] = '>';
+        mapa[30][5] = '<';
+        mapa[5][tam / 2] = 'O';
+
+        // Paredes fixas extras
+        mapa[25][25] = '*';
+        mapa[26][25] = '*';
+        mapa[25][26] = '*';
+        mapa[26][26] = '*';
+        mapa[18][18] = '*';
+        mapa[19][18] = '*';
+        mapa[18][19] = '*';
+    }
+
+    int paredes = 0;
+    while (paredes < num_paredes) {
+        int x = rand() % (tam - 2) + 1;
+        int y = rand() % (tam - 2) + 1;
+
+        if (mapa[y][x] == '.' && !(x == *px && y == *py) && !(x == *vx && y == *vy)) {
+            int is_fixed_object_pos = 0;
+            if (tam == TAM2) {
+                if ((x == 10 && y == 10) || (x == 15 && y == 15) || (x == 5 && y == 5) || (x == 10 && y == 5))
+                    is_fixed_object_pos = 1;
+            } else {
+                if ((x == 20 && y == 20) || (x == 35 && y == 35) || (x == 10 && y == 10) || (x == 30 && y == 5) || (x == tam / 2 && y == 5))
+                    is_fixed_object_pos = 1;
+            }
+
+            if (!is_fixed_object_pos) {
+                mapa[y][x] = '#';
+                paredes++;
+            }
+        }
+    }
+}
+
+void moverInimigo(char **mapa, int tam, int *vx, int *vy, int px, int py) {
+    int dx = (px > *vx) ? 1 : (px < *vx) ? -1 : 0;
+    int dy = (py > *vy) ? 1 : (py < *vy) ? -1 : 0;
+
+    int nx = *vx + dx;
+    int ny = *vy + dy;
+
+    char char_on_old_enemy_pos = mapa[*vy][*vx];
+
+    if (nx >= 0 && nx < tam && ny >= 0 && ny < tam &&
+        mapa[ny][nx] != '*' && mapa[ny][nx] != '#' && mapa[ny][nx] != 'D') {
+        
+        if (nx != px || ny != py) {
+            mapa[*vy][*vx] = '.';
+            *vx = nx;
+            *vy = ny;
+            mapa[*vy][*vx] = 'V';
+        }
+    }
+}
+
+void transformarEspinhosEmParedes(char **mapa, int tam) {
+    for (int i = 0; i < tam; i++) {
+        for (int j = 0; j < tam; j++) {
+            if (mapa[i][j] == '#') {
+                mapa[i][j] = '*';
+            }
+        }
+    }
+    printf("Todos os espinhos foram transformados em paredes!\n");
+    Sleep(1500);
+}
+
+void jogar() {
+    int tam = TAM2;
+    char **mapa = criarMapa(tam);
+    int px, py, vx, vy;
+    int temChave = 0;
+    int vidas = VIDAS_INICIAIS;
+    char tecla;
+
+    inicializarMapa(mapa, tam, &px, &py, &vx, &vy);
+    player_tile_underneath = mapa[py][px];
+    mapa[py][px] = '&';
+    mapa[vy][vx] = 'V';
+
+    while (1) {
+        desenharMapa(mapa, tam, vidas, temChave);
+
+        if (px == vx && py == vy) {
+            vidas--;
+            if (vidas <= 0) {
+                printf("Você foi pego pelo inimigo! Game Over.\n");
+                Sleep(2000);
+                break;
+            } else {
+                printf("Você foi pego! Reiniciando posição...\n");
+                Sleep(1000);
+                liberarMapa(mapa, tam);
+                mapa = criarMapa(tam);
+                inicializarMapa(mapa, tam, &px, &py, &vx, &vy); 
+                player_tile_underneath = mapa[py][px];
+                mapa[py][px] = '&';
+                mapa[vy][vx] = 'V';
+                temChave = 0;
+                continue;
+            }
+        }
+
+        tecla = _getch();
+        if (tecla == 'q' || tecla == 'Q') break;
+
+        if ((tecla == 'i' || tecla == 'I') && mapaAtual == 2 && player_tile_underneath == 'O') {
+            transformarEspinhosEmParedes(mapa, tam);
+            moverInimigo(mapa, tam, &vx, &vy, px, py);
+            Sleep(100);
+            continue;
+        }
+
+        int old_px = px, old_py = py;
+        int nx = px, ny = py;
+        if (tecla == 'w' || tecla == 'W') ny--;
+        if (tecla == 's' || tecla == 'S') ny++;
+        if (tecla == 'a' || tecla == 'A') nx--;
+        if (tecla == 'd' || tecla == 'D') nx++;
+
+        if (mapa[ny][nx] != '*' && mapa[ny][nx] != 'V') {
+            mapa[old_py][old_px] = player_tile_underneath;
+            px = nx; py = ny;
+            player_tile_underneath = mapa[py][px];
+        }
+
+        if (mapa[py][px] == '#') {
+            vidas--;
+            printf("Você pisou em espinhos! Vidas restantes: %d\n", vidas);
+            Sleep(1000);
+            if (vidas <= 0) {
+                printf("Game Over!\n");
+                Sleep(2000);
+                break;
+            }
+            px = 1; py = 1;
+            player_tile_underneath = mapa[py][px];
+        }
+
+        if (mapa[py][px] == '@') {
+            temChave = 1;
+            mapa[py][px] = '.';
+            player_tile_underneath = '.';
+            printf("Você pegou a chave!\n");
+            Sleep(1000);
+        }
+
+        if (mapa[py][px] == '>') {
+            printf("Teleportado!\n");
+            Sleep(1000);
+            if (tam == TAM2) {
+                px = 10; py = 5;
+            } else {
+                px = 30; py = 5;
+            }
+            player_tile_underneath = mapa[py][px];
+        }
+
+        if (mapa[py][px] == '<') {
+            printf("Teleportado de volta!\n");
+            Sleep(1000);
+            mapa[old_py][old_px] = '<';
+            if (tam == TAM2) {
+                px = 5; py = 5;
+            } else {
+                px = 10; py = 10;
+            }
+            player_tile_underneath = mapa[py][px];
+        }
+
+        if (mapa[py][px] == 'D') {
+            if (temChave && mapaAtual == 1) {
+                printf("Você abriu a porta para o próximo mapa!\n");
+                Sleep(1500);
+                liberarMapa(mapa, tam);
+                tam = TAM2;
+                mapa = criarMapa(tam);
+                mapaAtual = 2;
+                inicializarMapa(mapa, tam, &px, &py, &vx, &vy);
+                player_tile_underneath = mapa[py][px];
+                mapa[py][px] = '&';
+                mapa[vy][vx] = 'V';
+                temChave = 0;
+                continue;
+            } else if (mapaAtual == 2 && temChave) {
+                printf("Parabéns! Você venceu o jogo!\n");
+                Sleep(2000);
+                break;
+            } else {
+                printf("Você precisa da chave.\n");
+                Sleep(1000);
+            }
+        }
+
+        mapa[py][px] = '&';
+        moverInimigo(mapa, tam, &vx, &vy, px, py);
+        Sleep(100);
+    }
+
+    liberarMapa(mapa, tam);
+}
+
+void creditos() {
+    limparTela();
+    printf("=== Créditos ===\n");
+    printf("Desenvolvedores: Andre Bispo e Raphael Castro\n");
+    printf("Agradecimentos: Gepeto, GitHub Copilot\n");
+    printf("\nPressione qualquer tecla para voltar ao menu...\n");
+    _getch();
+}
+
+int main() {
+    int opcao;
+    while (1) {
+        limparTela();
+        printf("=== Dungeon Crawler ===\n");
+        printf("1. Jogar\n");
+        printf("2. Créditos\n");
+        printf("3. Sair\n");
+        printf("Escolha uma opção: ");
+        scanf("%d", &opcao);
+        fflush(stdin);
+        switch (opcao) {
+            case 1:
+                mapaAtual = 1;
+                jogar();
+                break;
+            case 2:
+                creditos();
+                break;
+            case 3:
+                return 0;
+            default:
+                printf("Opção inválida.\n");
+                Sleep(1000);
+        }
+    }
+}
