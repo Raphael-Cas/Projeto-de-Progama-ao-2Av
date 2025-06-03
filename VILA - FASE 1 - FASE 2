@@ -1,0 +1,590 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <conio.h>
+#include <windows.h>
+#include <string.h>
+#include <locale.h>
+#include <time.h>
+
+#define TAM_VILA 20
+#define TAM_FASE2 30
+#define MAX_FALAS 7
+#define TAM_FALA 200
+
+typedef enum {
+    ESTADO_MENU,
+    ESTADO_VILA,
+    ESTADO_FASE1,
+    ESTADO_FASE2,
+    ESTADO_CREDITOS,
+    ESTADO_SAIR
+} EstadoJogoEnum;
+
+typedef struct {
+    char mapaAtual[TAM_FASE2][TAM_FASE2];
+    int jogadorX, jogadorY;
+    int npcX, npcY;
+    int inimigoX, inimigoY;
+    char tileOcupadoInimigo;
+    int temChave;
+    int vidas;
+    int tipoMapaAtual;
+    int dialogoAtivo;
+    int indiceFalaAtual;
+    char falasNPC[MAX_FALAS][TAM_FALA];
+    EstadoJogoEnum estadoDoJogo;
+} EstadoJogo;
+
+EstadoJogo g_estadoDoJogo;
+
+void moverCursor(int x, int y) {
+    COORD pos = { x * 2, y };
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), pos);
+}
+
+void desenharMapa(int tamanhoMapa) {
+    system("cls");
+    for (int i = 0; i < tamanhoMapa; i++) {
+        for (int j = 0; j < tamanhoMapa; j++) {
+            printf("%c ", g_estadoDoJogo.mapaAtual[i][j]);
+        }
+        printf("\n");
+    }
+}
+
+int podeMover(int x, int y, int tamanhoMapa) {
+    if (g_estadoDoJogo.mapaAtual[y][x] == '*' || g_estadoDoJogo.mapaAtual[y][x] == '#') return 0;
+    if (g_estadoDoJogo.mapaAtual[y][x] == 'D' && g_estadoDoJogo.tipoMapaAtual != 2) return 0;
+    return 1;
+}
+
+void desenharCasa2x3(int inicioX, int inicioY) {
+    if (inicioX + 1 >= TAM_VILA || inicioY + 2 >= TAM_VILA) return;
+    g_estadoDoJogo.mapaAtual[inicioY][inicioX] = '/';
+    g_estadoDoJogo.mapaAtual[inicioY][inicioX + 1] = '\\';
+    g_estadoDoJogo.mapaAtual[inicioY + 1][inicioX] = '*';
+    g_estadoDoJogo.mapaAtual[inicioY + 1][inicioX + 1] = '*';
+    g_estadoDoJogo.mapaAtual[inicioY + 2][inicioX] = '*';
+    g_estadoDoJogo.mapaAtual[inicioY + 2][inicioX + 1] = '*';
+}
+
+void desenharCasaMaior(int inicioX, int inicioY, int* portaX, int* portaY) {
+    if (inicioX + 2 >= TAM_VILA || inicioY + 3 >= TAM_VILA) return;
+    g_estadoDoJogo.mapaAtual[inicioY][inicioX + 1] = '*';
+    g_estadoDoJogo.mapaAtual[inicioY + 1][inicioX] = '/';
+    g_estadoDoJogo.mapaAtual[inicioY + 1][inicioX + 1] = '|';
+    g_estadoDoJogo.mapaAtual[inicioY + 1][inicioX + 2] = '\\';
+    g_estadoDoJogo.mapaAtual[inicioY + 2][inicioX] = '*';
+    g_estadoDoJogo.mapaAtual[inicioY + 2][inicioX + 1] = '*';
+    g_estadoDoJogo.mapaAtual[inicioY + 2][inicioX + 2] = '*';
+    g_estadoDoJogo.mapaAtual[inicioY + 3][inicioX] = '*';
+    g_estadoDoJogo.mapaAtual[inicioY + 3][inicioX + 1] = 'D';
+    g_estadoDoJogo.mapaAtual[inicioY + 3][inicioX + 2] = '*';
+
+    if (portaX != NULL) *portaX = inicioX + 1;
+    if (portaY != NULL) *portaY = inicioY + 3;
+
+    if (g_estadoDoJogo.tipoMapaAtual == 0) {
+        g_estadoDoJogo.npcX = inicioX - 2;
+        g_estadoDoJogo.npcY = inicioY + 3;
+        if (g_estadoDoJogo.npcX >= 0 && g_estadoDoJogo.npcY >= 0 && g_estadoDoJogo.npcX < TAM_VILA && g_estadoDoJogo.npcY < TAM_VILA) {
+            g_estadoDoJogo.mapaAtual[g_estadoDoJogo.npcY][g_estadoDoJogo.npcX] = 'P';
+        }
+    }
+}
+
+void desenharCasaInvertida(int inicioX, int inicioY, int* portaX, int* portaY) {
+    if (inicioX + 2 >= TAM_VILA || inicioY + 3 >= TAM_VILA) return;
+
+    g_estadoDoJogo.mapaAtual[inicioY][inicioX] = '#';
+    g_estadoDoJogo.mapaAtual[inicioY][inicioX + 1] = 'D';
+    g_estadoDoJogo.mapaAtual[inicioY][inicioX + 2] = '#';
+
+    g_estadoDoJogo.mapaAtual[inicioY + 1][inicioX] = '#';
+    g_estadoDoJogo.mapaAtual[inicioY + 1][inicioX + 1] = '#';
+    g_estadoDoJogo.mapaAtual[inicioY + 1][inicioX + 2] = '#';
+
+    g_estadoDoJogo.mapaAtual[inicioY + 2][inicioX] = '\\';
+    g_estadoDoJogo.mapaAtual[inicioY + 2][inicioX + 1] = '|';
+    g_estadoDoJogo.mapaAtual[inicioY + 2][inicioX + 2] = '/';
+    g_estadoDoJogo.mapaAtual[inicioY + 3][inicioX + 1] = '#';
+
+    if (portaX != NULL) *portaX = inicioX + 1;
+    if (portaY != NULL) *portaY = inicioY;
+}
+
+void carregarMapaVilaFase1(int tipo_mapa) {
+    g_estadoDoJogo.temChave = 0;
+    g_estadoDoJogo.dialogoAtivo = 0;
+    g_estadoDoJogo.indiceFalaAtual = 0;
+    g_estadoDoJogo.tipoMapaAtual = tipo_mapa;
+    g_estadoDoJogo.inimigoX = -1;
+    g_estadoDoJogo.inimigoY = -1;
+
+    for (int i = 0; i < TAM_VILA; i++)
+        for (int j = 0; j < TAM_VILA; j++)
+            g_estadoDoJogo.mapaAtual[i][j] = '.';
+
+    char charBorda = (g_estadoDoJogo.tipoMapaAtual == 1) ? '#' : '*';
+    for (int i = 0; i < TAM_VILA; i++) {
+        g_estadoDoJogo.mapaAtual[0][i] = charBorda;
+        g_estadoDoJogo.mapaAtual[TAM_VILA - 1][i] = charBorda;
+        g_estadoDoJogo.mapaAtual[i][0] = charBorda;
+        g_estadoDoJogo.mapaAtual[i][TAM_VILA - 1] = charBorda;
+    }
+
+    int portaCasaGrandeX, portaCasaGrandeY;
+
+    if (g_estadoDoJogo.tipoMapaAtual == 1) {
+        for (int i = 2; i < TAM_VILA - 2; i++) {
+            g_estadoDoJogo.mapaAtual[i][5] = '#';
+            g_estadoDoJogo.mapaAtual[i][10] = '#';
+            g_estadoDoJogo.mapaAtual[i][15] = '#';
+        }
+        for (int j = 2; j < TAM_VILA - 2; j++) {
+            g_estadoDoJogo.mapaAtual[5][j] = '#';
+            g_estadoDoJogo.mapaAtual[10][j] = '#';
+            g_estadoDoJogo.mapaAtual[15][j] = '#';
+        }
+
+        g_estadoDoJogo.mapaAtual[5][6] = '.'; g_estadoDoJogo.mapaAtual[5][7] = '.';
+        g_estadoDoJogo.mapaAtual[10][11] = '.'; g_estadoDoJogo.mapaAtual[10][12] = '.';
+        g_estadoDoJogo.mapaAtual[15][4] = '.'; g_estadoDoJogo.mapaAtual[15][3] = '.';
+        g_estadoDoJogo.mapaAtual[12][15] = '.';
+        g_estadoDoJogo.mapaAtual[8][15] = '.';
+        g_estadoDoJogo.mapaAtual[10][13] = '.';
+        g_estadoDoJogo.mapaAtual[5][13] = '.';
+        g_estadoDoJogo.mapaAtual[15][7] = '.';
+        g_estadoDoJogo.mapaAtual[5][7] = '.';
+
+        g_estadoDoJogo.npcX = -1;
+        g_estadoDoJogo.npcY = -1;
+
+        desenharCasaInvertida(10, 2, &portaCasaGrandeX, &portaCasaGrandeY);
+
+        g_estadoDoJogo.mapaAtual[10][10] = '@';
+
+        g_estadoDoJogo.jogadorX = 1;
+        g_estadoDoJogo.jogadorY = 1;
+
+    } else {
+        for (int i = 5; i < 15; i++) {
+            g_estadoDoJogo.mapaAtual[10][i] = '*';
+        }
+
+        desenharCasa2x3(3, 2);
+        desenharCasa2x3(15, 4);
+        desenharCasa2x3(7, 14);
+
+        desenharCasaMaior(12, 11, &portaCasaGrandeX, &portaCasaGrandeY);
+
+        g_estadoDoJogo.mapaAtual[5][18] = '@';
+
+        g_estadoDoJogo.jogadorX = 1;
+        g_estadoDoJogo.jogadorY = 1;
+    }
+    desenharMapa(TAM_VILA);
+}
+
+void carregarMapaFase2() {
+    g_estadoDoJogo.temChave = 0;
+    g_estadoDoJogo.dialogoAtivo = 0;
+    g_estadoDoJogo.indiceFalaAtual = 0;
+    g_estadoDoJogo.tipoMapaAtual = 2;
+    g_estadoDoJogo.vidas = 3;
+    g_estadoDoJogo.inimigoX = -1;
+    g_estadoDoJogo.inimigoY = -1;
+    g_estadoDoJogo.tileOcupadoInimigo = '.';
+
+    for (int i = 0; i < TAM_FASE2; i++) {
+        for (int j = 0; j < TAM_FASE2; j++) {
+            g_estadoDoJogo.mapaAtual[i][j] = '.';
+        }
+    }
+
+    char charBorda = '#';
+    for (int i = 0; i < TAM_FASE2; i++) {
+        g_estadoDoJogo.mapaAtual[0][i] = charBorda;
+        g_estadoDoJogo.mapaAtual[TAM_FASE2 - 1][i] = charBorda;
+        g_estadoDoJogo.mapaAtual[i][0] = charBorda;
+        g_estadoDoJogo.mapaAtual[i][TAM_FASE2 - 1] = charBorda;
+    }
+
+    g_estadoDoJogo.jogadorX = 1;
+    g_estadoDoJogo.jogadorY = 1;
+
+    int centroX = TAM_FASE2 / 2;
+    int centroY = TAM_FASE2 / 2;
+
+    g_estadoDoJogo.mapaAtual[centroY][centroX] = 'D';
+    g_estadoDoJogo.inimigoX = centroX + 1;
+    g_estadoDoJogo.inimigoY = centroY;
+
+    for (int i = 5; i < 25; i++) g_estadoDoJogo.mapaAtual[i][7] = '#';
+    for (int i = 5; i < 25; i++) g_estadoDoJogo.mapaAtual[i][22] = '#';
+    for (int j = 5; j < 25; j++) g_estadoDoJogo.mapaAtual[7][j] = '#';
+    for (int j = 5; j < 25; j++) g_estadoDoJogo.mapaAtual[22][j] = '#';
+
+    g_estadoDoJogo.mapaAtual[10][7] = '.';
+    g_estadoDoJogo.mapaAtual[15][7] = '.';
+    g_estadoDoJogo.mapaAtual[20][7] = '.';
+    g_estadoDoJogo.mapaAtual[10][22] = '.';
+    g_estadoDoJogo.mapaAtual[15][22] = '.';
+    g_estadoDoJogo.mapaAtual[20][22] = '.';
+    g_estadoDoJogo.mapaAtual[7][10] = '.';
+    g_estadoDoJogo.mapaAtual[7][15] = '.';
+    g_estadoDoJogo.mapaAtual[7][20] = '.';
+    g_estadoDoJogo.mapaAtual[22][10] = '.';
+    g_estadoDoJogo.mapaAtual[22][15] = '.';
+    g_estadoDoJogo.mapaAtual[22][20] = '.';
+
+    g_estadoDoJogo.mapaAtual[3][3] = '*'; g_estadoDoJogo.mapaAtual[3][4] = '*'; g_estadoDoJogo.mapaAtual[3][5] = '*';
+    g_estadoDoJogo.mapaAtual[4][3] = '*'; g_estadoDoJogo.mapaAtual[5][3] = '*';
+
+    g_estadoDoJogo.mapaAtual[8][8] = '*'; g_estadoDoJogo.mapaAtual[8][9] = '*'; g_estadoDoJogo.mapaAtual[8][10] = '*';
+    g_estadoDoJogo.mapaAtual[9][10] = '*'; g_estadoDoJogo.mapaAtual[10][10] = '*';
+
+    g_estadoDoJogo.mapaAtual[4][25] = '*'; g_estadoDoJogo.mapaAtual[4][26] = '*';
+    g_estadoDoJogo.mapaAtual[8][28] = '*'; g_estadoDoJogo.mapaAtual[8][27] = '*';
+
+    g_estadoDoJogo.mapaAtual[25][5] = '*'; g_estadoDoJogo.mapaAtual[26][5] = '*';
+    g_estadoDoJogo.mapaAtual[28][10] = '*'; g_estadoDoJogo.mapaAtual[28][11] = '*';
+
+    g_estadoDoJogo.mapaAtual[1][TAM_FASE2 - 2] = '@';
+
+    for (int i = 1; i < TAM_FASE2 - 1; i += 3) {
+        if (!((i == centroY && (i + 5) % (TAM_FASE2 - 2) + 1 == centroX) || (i == centroY && (i + 10) % (TAM_FASE2 - 2) + 1 == centroX) ||
+              ((i + 5) % (TAM_FASE2 - 2) + 1 == centroY && i == centroX) || ((i + 10) % (TAM_FASE2 - 2) + 1 == centroY && i == centroX) ||
+              (i == centroY && (i + 5) % (TAM_FASE2 - 2) + 1 == centroX + 1) || (i == centroY && (i + 10) % (TAM_FASE2 - 2) + 1 == centroX + 1) ||
+              ((i + 5) % (TAM_FASE2 - 2) + 1 == centroY && i == centroX + 1) || ((i + 10) % (TAM_FASE2 - 2) + 1 == centroY && i == centroX + 1))) {
+            g_estadoDoJogo.mapaAtual[i][(i + 5) % (TAM_FASE2 - 2) + 1] = '#';
+            g_estadoDoJogo.mapaAtual[i][(i + 10) % (TAM_FASE2 - 2) + 1] = '#';
+            g_estadoDoJogo.mapaAtual[(i + 5) % (TAM_FASE2 - 2) + 1][i] = '#';
+            g_estadoDoJogo.mapaAtual[(i + 10) % (TAM_FASE2 - 2) + 1][i] = '#';
+        }
+    }
+    desenharMapa(TAM_FASE2);
+}
+
+void moverInimigo() {
+    if (g_estadoDoJogo.inimigoX != -1 && g_estadoDoJogo.inimigoY != -1) {
+        g_estadoDoJogo.mapaAtual[g_estadoDoJogo.inimigoY][g_estadoDoJogo.inimigoX] = g_estadoDoJogo.tileOcupadoInimigo;
+    }
+
+    int dx[] = {0, 0, -1, 1};
+    int dy[] = {-1, 1, 0, 0};
+
+    int direcao = rand() % 4;
+    int nx = g_estadoDoJogo.inimigoX + dx[direcao];
+    int ny = g_estadoDoJogo.inimigoY + dy[direcao];
+
+    if (nx > 0 && nx < TAM_FASE2 - 1 && ny > 0 && ny < TAM_FASE2 - 1 &&
+        g_estadoDoJogo.mapaAtual[ny][nx] != '*' && g_estadoDoJogo.mapaAtual[ny][nx] != '&' && g_estadoDoJogo.mapaAtual[ny][nx] != 'D') {
+        g_estadoDoJogo.tileOcupadoInimigo = g_estadoDoJogo.mapaAtual[ny][nx];
+        g_estadoDoJogo.inimigoX = nx;
+        g_estadoDoJogo.inimigoY = ny;
+        g_estadoDoJogo.mapaAtual[g_estadoDoJogo.inimigoY][g_estadoDoJogo.inimigoX] = 'X';
+    }
+}
+
+void jogarVilaFase1() {
+    strcpy(g_estadoDoJogo.falasNPC[0], "Ola! Voce deve ser o heroi enviado para salvar a vila.");
+    strcpy(g_estadoDoJogo.falasNPC[1], "Nos estivemos com diversos problemas com essa casa que apareceu do nada.");
+    strcpy(g_estadoDoJogo.falasNPC[2], "Perdemos plantacoes e tivemos diversas pessoas adoecendo; alguns ja entraram, mas sempre voltam doentes.");
+    strcpy(g_estadoDoJogo.falasNPC[3], "Para voce entrar nesta casa, deve achar a chave que abrira a porta.");
+    strcpy(g_estadoDoJogo.falasNPC[4], "Tome cuidado, la tem armadilhas, monstros e teletransportes.");
+    strcpy(g_estadoDoJogo.falasNPC[5], "Boa sorte!!!!");
+
+    carregarMapaVilaFase1(0);
+
+    char tecla;
+
+    while (g_estadoDoJogo.estadoDoJogo == ESTADO_VILA || g_estadoDoJogo.estadoDoJogo == ESTADO_FASE1) {
+        int tamanhoMapaAtual = TAM_VILA;
+
+        moverCursor(g_estadoDoJogo.jogadorX, g_estadoDoJogo.jogadorY);
+        printf("&");
+
+        char linhaVazia[TAM_FALA * 2 + 1];
+        memset(linhaVazia, ' ', sizeof(linhaVazia) - 1);
+        linhaVazia[sizeof(linhaVazia) - 1] = '\0';
+
+        moverCursor(0, tamanhoMapaAtual);
+        printf("%s", linhaVazia);
+        moverCursor(0, tamanhoMapaAtual + 1);
+        printf("%s", linhaVazia);
+
+        moverCursor(0, tamanhoMapaAtual);
+        printf("Use W A S D para mover, Q para sair. Pressione 'I' para interagir. Chave: %s", g_estadoDoJogo.temChave ? "SIM" : "NAO");
+
+        if (g_estadoDoJogo.dialogoAtivo) {
+            moverCursor(0, tamanhoMapaAtual + 1);
+            printf("NPC: %s", g_estadoDoJogo.falasNPC[g_estadoDoJogo.indiceFalaAtual]);
+        }
+
+        tecla = _getch();
+
+        moverCursor(g_estadoDoJogo.jogadorX, g_estadoDoJogo.jogadorY);
+        if (g_estadoDoJogo.tipoMapaAtual == 0 && g_estadoDoJogo.jogadorX == g_estadoDoJogo.npcX && g_estadoDoJogo.jogadorY == g_estadoDoJogo.npcY && !g_estadoDoJogo.dialogoAtivo) {
+            printf("P ");
+        } else {
+            printf("%c ", g_estadoDoJogo.mapaAtual[g_estadoDoJogo.jogadorY][g_estadoDoJogo.jogadorX]);
+        }
+
+        if (tecla == 'q' || tecla == 'Q') {
+            g_estadoDoJogo.estadoDoJogo = ESTADO_MENU;
+            break;
+        }
+
+        if (tecla == 'i' || tecla == 'I') {
+            if (g_estadoDoJogo.dialogoAtivo) {
+                g_estadoDoJogo.indiceFalaAtual++;
+                if (g_estadoDoJogo.indiceFalaAtual >= MAX_FALAS - 1) {
+                    g_estadoDoJogo.dialogoAtivo = 0;
+                    g_estadoDoJogo.indiceFalaAtual = 0;
+                    moverCursor(0, tamanhoMapaAtual + 1);
+                    printf("%s", linhaVazia);
+                }
+            } else {
+                char itemAtual = g_estadoDoJogo.mapaAtual[g_estadoDoJogo.jogadorY][g_estadoDoJogo.jogadorX];
+
+                if (itemAtual == '@') {
+                    g_estadoDoJogo.temChave = 1;
+                    g_estadoDoJogo.mapaAtual[g_estadoDoJogo.jogadorY][g_estadoDoJogo.jogadorX] = '.';
+
+                    for (int i = 0; i < TAM_VILA; i++) {
+                        for (int j = 0; j < TAM_VILA; j++) {
+                            if (g_estadoDoJogo.mapaAtual[i][j] == 'D') {
+                                g_estadoDoJogo.mapaAtual[i][j] = '=';
+                            }
+                        }
+                    }
+                    system("cls");
+                    desenharMapa(TAM_VILA);
+                } else if (g_estadoDoJogo.jogadorX == g_estadoDoJogo.npcX && g_estadoDoJogo.jogadorY == g_estadoDoJogo.npcY && g_estadoDoJogo.tipoMapaAtual == 0) {
+                    g_estadoDoJogo.dialogoAtivo = 1;
+                    g_estadoDoJogo.indiceFalaAtual = 0;
+                } else if (itemAtual == '=') {
+                    if (g_estadoDoJogo.tipoMapaAtual == 0) {
+                        g_estadoDoJogo.estadoDoJogo = ESTADO_FASE1;
+                        carregarMapaVilaFase1(1);
+                    } else if (g_estadoDoJogo.tipoMapaAtual == 1) {
+                        g_estadoDoJogo.estadoDoJogo = ESTADO_FASE2;
+                        carregarMapaFase2();
+                        return;
+                    }
+                }
+            }
+        }
+
+        int novoX = g_estadoDoJogo.jogadorX, novoY = g_estadoDoJogo.jogadorY;
+        if (tecla == 'w') novoY--;
+        if (tecla == 's') novoY++;
+        if (tecla == 'a') novoX--;
+        if (tecla == 'd') novoX++;
+
+        if (novoX >= 0 && novoX < tamanhoMapaAtual && novoY >= 0 && novoY < tamanhoMapaAtual) {
+            if (g_estadoDoJogo.mapaAtual[novoY][novoX] == '#') {
+                system("cls");
+                printf("\n\nVoce tocou nos espinhos e morreu!\n");
+                printf("Fim de jogo. Pressione qualquer tecla para voltar ao menu...\n");
+                _getch();
+                g_estadoDoJogo.estadoDoJogo = ESTADO_MENU;
+                return;
+            }
+            if (!g_estadoDoJogo.dialogoAtivo) {
+                if (podeMover(novoX, novoY, tamanhoMapaAtual)) {
+                    g_estadoDoJogo.jogadorX = novoX;
+                    g_estadoDoJogo.jogadorY = novoY;
+                }
+            }
+        }
+        Sleep(30);
+    }
+    system("cls");
+}
+
+void jogarFase2() {
+    carregarMapaFase2();
+
+    char tecla;
+
+    while (g_estadoDoJogo.estadoDoJogo == ESTADO_FASE2) {
+        desenharMapa(TAM_FASE2);
+
+        moverCursor(g_estadoDoJogo.jogadorX, g_estadoDoJogo.jogadorY);
+        printf("&");
+
+        if (g_estadoDoJogo.jogadorX != g_estadoDoJogo.inimigoX || g_estadoDoJogo.jogadorY != g_estadoDoJogo.inimigoY) {
+            moverCursor(g_estadoDoJogo.inimigoX, g_estadoDoJogo.inimigoY);
+            printf("X");
+        }
+
+        char linhaVazia[TAM_FALA * 2 + 1];
+        memset(linhaVazia, ' ', sizeof(linhaVazia) - 1);
+        linhaVazia[sizeof(linhaVazia) - 1] = '\0';
+        moverCursor(0, TAM_FASE2 + 1);
+        printf("%s", linhaVazia);
+
+        moverCursor(0, TAM_FASE2);
+        printf("Use W A S D para mover, Q para sair. Pressione 'I' para interagir. Chave: %s | Vidas: %d",
+               g_estadoDoJogo.temChave ? "SIM" : "NAO", g_estadoDoJogo.vidas);
+
+        tecla = _getch();
+
+        moverCursor(g_estadoDoJogo.jogadorX, g_estadoDoJogo.jogadorY);
+        if (g_estadoDoJogo.jogadorX == g_estadoDoJogo.inimigoX && g_estadoDoJogo.jogadorY == g_estadoDoJogo.inimigoY) {
+            printf("X ");
+        } else {
+            printf("%c ", g_estadoDoJogo.mapaAtual[g_estadoDoJogo.jogadorY][g_estadoDoJogo.jogadorX]);
+        }
+
+        if (tecla == 'q' || tecla == 'Q') {
+            g_estadoDoJogo.estadoDoJogo = ESTADO_MENU;
+            break;
+        }
+
+        int novoX = g_estadoDoJogo.jogadorX, novoY = g_estadoDoJogo.jogadorY;
+        if (tecla == 'w') novoY--;
+        if (tecla == 's') novoY++;
+        if (tecla == 'a') novoX--;
+        if (tecla == 'd') novoX++;
+
+        if (novoX > 0 && novoX < TAM_FASE2 - 1 && novoY > 0 && novoY < TAM_FASE2 - 1) {
+            char tileAlvo = g_estadoDoJogo.mapaAtual[novoY][novoX];
+            if (tileAlvo != '*' && tileAlvo != 'X') {
+                g_estadoDoJogo.jogadorX = novoX;
+                g_estadoDoJogo.jogadorY = novoY;
+            }
+        }
+
+        if (g_estadoDoJogo.mapaAtual[g_estadoDoJogo.jogadorY][g_estadoDoJogo.jogadorX] == '#') {
+            g_estadoDoJogo.vidas--;
+            if (g_estadoDoJogo.vidas <= 0) {
+                system("cls");
+                printf("\n\nVoce tocou nos espinhos e morreu!\n");
+                printf("Fim de jogo. Pressione qualquer tecla para voltar ao menu...\n");
+                _getch();
+                g_estadoDoJogo.estadoDoJogo = ESTADO_MENU;
+                return;
+            } else {
+                moverCursor(0, TAM_FASE2 + 2);
+                printf("Voce pisou nos espinhos e perdeu uma vida! Vidas restantes: %d", g_estadoDoJogo.vidas);
+                Sleep(1500);
+                carregarMapaFase2();
+                g_estadoDoJogo.jogadorX = 1;
+                g_estadoDoJogo.jogadorY = 1;
+            }
+        }
+
+        if (tecla == 'i' || tecla == 'I') {
+            char itemAtual = g_estadoDoJogo.mapaAtual[g_estadoDoJogo.jogadorY][g_estadoDoJogo.jogadorX];
+
+            if (itemAtual == '@') {
+                g_estadoDoJogo.temChave = 1;
+
+                for (int i = 0; i < TAM_FASE2; i++) {
+                    for (int j = 0; j < TAM_FASE2; j++) {
+                        if (g_estadoDoJogo.mapaAtual[i][j] == 'D') {
+                            g_estadoDoJogo.mapaAtual[i][j] = '=';
+                        }
+                    }
+                }
+            } else if (itemAtual == '=') {
+                system("cls");
+                printf("\n\nVoce escapou da Fase 2!\n");
+                printf("Parabens, voce completou o jogo!\n");
+                printf("Pressione qualquer tecla para voltar ao menu...\n");
+                _getch();
+                g_estadoDoJogo.estadoDoJogo = ESTADO_MENU;
+                return;
+            }
+        }
+
+        moverInimigo();
+
+        if (g_estadoDoJogo.jogadorX == g_estadoDoJogo.inimigoX && g_estadoDoJogo.jogadorY == g_estadoDoJogo.inimigoY) {
+            g_estadoDoJogo.vidas--;
+            if (g_estadoDoJogo.vidas <= 0) {
+                system("cls");
+                printf("\n\nVoce foi pego pelo inimigo e morreu!\n");
+                printf("Fim de jogo. Pressione qualquer tecla para voltar ao menu...\n");
+                _getch();
+                g_estadoDoJogo.estadoDoJogo = ESTADO_MENU;
+                return;
+            } else {
+                moverCursor(0, TAM_FASE2 + 2);
+                printf("Voce foi pego pelo inimigo e perdeu uma vida! Vidas restantes: %d", g_estadoDoJogo.vidas);
+                Sleep(1500);
+                carregarMapaFase2();
+            }
+        }
+
+        Sleep(30);
+    }
+    system("cls");
+}
+
+void creditos() {
+    system("cls");
+    printf("\n=== Creditos ===\n");
+    printf("Desenvolvedores: Andre Bispo e Raphael Castro\n");
+    printf("Agradecimentos: Ao professor Girotto C\n");
+    printf("\nPressione qualquer tecla para voltar ao menu...\n");
+    _getch();
+    system("cls");
+    g_estadoDoJogo.estadoDoJogo = ESTADO_MENU;
+}
+
+int main() {
+    setlocale(LC_ALL, "portuguese");
+    srand(time(NULL));
+
+    g_estadoDoJogo.estadoDoJogo = ESTADO_MENU;
+
+    while (g_estadoDoJogo.estadoDoJogo != ESTADO_SAIR) {
+        if (g_estadoDoJogo.estadoDoJogo == ESTADO_MENU) {
+            system("cls");
+            printf("\n=== Dungeon Crawler ===\n");
+            printf("\n=== Menu Principal ===\n");
+            printf("1. Jogar\n");
+            printf("2. Creditos\n");
+            printf("3. Sair\n");
+            printf("Escolha uma opcao: ");
+
+            int escolha;
+            while (scanf("%d", &escolha) != 1) {
+                printf("Entrada invalida! Por favor, digite um numero: ");
+                while (getchar() != '\n');
+            }
+            while (getchar() != '\n');
+
+            switch (escolha) {
+                case 1:
+                    g_estadoDoJogo.estadoDoJogo = ESTADO_VILA;
+                    break;
+                case 2:
+                    g_estadoDoJogo.estadoDoJogo = ESTADO_CREDITOS;
+                    break;
+                case 3:
+                    g_estadoDoJogo.estadoDoJogo = ESTADO_SAIR;
+                    printf("Saindo do Jogo...\n");
+                    break;
+                default:
+                    printf("Opcao invalida!\n");
+                    Sleep(1000);
+            }
+        }
+
+        if (g_estadoDoJogo.estadoDoJogo == ESTADO_VILA) {
+            jogarVilaFase1();
+        } else if (g_estadoDoJogo.estadoDoJogo == ESTADO_FASE1) {
+            jogarVilaFase1();
+        } else if (g_estadoDoJogo.estadoDoJogo == ESTADO_FASE2) {
+            jogarFase2();
+        } else if (g_estadoDoJogo.estadoDoJogo == ESTADO_CREDITOS) {
+            creditos();
+        }
+    }
+    return 0;
+}
